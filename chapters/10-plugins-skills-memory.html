@@ -7,7 +7,11 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.1/github-markdown.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script>hljs.highlightAll();</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.0/mermaid.min.js"></script>
+    <script>
+        hljs.highlightAll();
+        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+    </script>
     <style>
         body {
             margin: 0;
@@ -20,6 +24,9 @@
             color: white;
             padding: 15px 0;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
         }
         .nav-container {
             max-width: 1200px;
@@ -33,9 +40,10 @@
             color: white;
             text-decoration: none;
             font-weight: 500;
+            transition: opacity 0.3s;
         }
         .nav a:hover {
-            text-decoration: underline;
+            opacity: 0.8;
         }
         .container {
             max-width: 1200px;
@@ -51,8 +59,41 @@
         .markdown-body {
             box-sizing: border-box;
             min-width: 200px;
-            max-width: 980px;
+            max-width: 100%;
             margin: 0 auto;
+        }
+        .markdown-body pre {
+            background: #f6f8fa;
+            border-radius: 6px;
+            padding: 16px;
+        }
+        .markdown-body code {
+            background: #f6f8fa;
+            padding: 0.2em 0.4em;
+            border-radius: 3px;
+            font-size: 85%;
+        }
+        .markdown-body pre code {
+            background: transparent;
+            padding: 0;
+        }
+        .markdown-body table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 20px 0;
+        }
+        .markdown-body table th,
+        .markdown-body table td {
+            border: 1px solid #dfe2e5;
+            padding: 8px 13px;
+        }
+        .markdown-body table th {
+            background: #f6f8fa;
+            font-weight: 600;
+        }
+        .mermaid {
+            text-align: center;
+            margin: 30px 0;
         }
         .pagination {
             display: flex;
@@ -80,6 +121,12 @@
         .pagination .next::after {
             content: " →";
         }
+        blockquote {
+            border-left: 4px solid #667eea;
+            padding-left: 20px;
+            color: #6a737d;
+            margin: 20px 0;
+        }
         @media (max-width: 768px) {
             .content {
                 padding: 30px 20px;
@@ -91,369 +138,337 @@
     <div class="nav">
         <div class="nav-container">
             <a href="../index.html">📘 解密 Claude Code</a>
-            <a href="../index.html#toc">目录</a>
+            <a href="../index.html">目录</a>
         </div>
     </div>
     
     <div class="container">
         <div class="content">
             <article class="markdown-body">
-<h1>第10章：插件、技能与记忆系统</h1>
-
-<p>> Claude Code 不只是一个固定功能的命令行工具——它是一个可扩展的平台，通过插件（Plugin）、技能（Skill）和持久记忆（Memory）三大机制，赋予 AI 跨会话学习、按需扩展能力的能力。本章深入拆解这三套系统的设计与实现细节。</p>
-
-<p>---</p>
-
-<h2>10.1 插件架构：什么是插件，如何被加载</h2>
-
-<h3>插件的定义</h3>
-
+<h1 id="10">第10章：插件、技能与记忆系统</h1>
+<blockquote>
+<p>Claude Code 不只是一个固定功能的命令行工具——它是一个可扩展的平台，通过插件（Plugin）、技能（Skill）和持久记忆（Memory）三大机制，赋予 AI 跨会话学习、按需扩展能力的能力。本章深入拆解这三套系统的设计与实现细节。</p>
+</blockquote>
+<hr />
+<h2 id="101">10.1 插件架构：什么是插件，如何被加载</h2>
+<h3 id="_1">插件的定义</h3>
 <p>Claude Code 的插件系统分为两类：<strong>内置插件（Built-in Plugin）</strong> 和 <strong>外部市场插件（Marketplace Plugin）</strong>。</p>
-
 <p>内置插件的定义类型位于 <code>src/types/plugin.ts</code>：</p>
-
-<pre><code class="language-typescript">// src/types/plugin.ts:18-35
-export type BuiltinPluginDefinition = {
-  name: string
-  description: string
-  version?: string
-  skills?: BundledSkillDefinition[]
-  hooks?: HooksSettings
-  mcpServers?: Record<string, McpServerConfig>
-  isAvailable?: () => boolean
-  defaultEnabled?: boolean
-}</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/types/plugin.ts:18-35</span>
+<span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">BuiltinPluginDefinition</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
+<span class="w">  </span><span class="nx">description</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
+<span class="w">  </span><span class="nx">version?</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
+<span class="w">  </span><span class="nx">skills?</span><span class="o">:</span><span class="w"> </span><span class="kt">BundledSkillDefinition</span><span class="p">[]</span>
+<span class="w">  </span><span class="nx">hooks?</span><span class="o">:</span><span class="w"> </span><span class="kt">HooksSettings</span>
+<span class="w">  </span><span class="nx">mcpServers?</span><span class="o">:</span><span class="w"> </span><span class="kt">Record</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">McpServerConfig</span><span class="o">&gt;</span>
+<span class="w">  </span><span class="nx">isAvailable</span><span class="o">?:</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="kt">boolean</span>
+<span class="w">  </span><span class="nx">defaultEnabled?</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p>一个插件可以捆绑多种组件：技能（skills）、钩子（hooks）、MCP 服务器。这是一种"组件包"的设计理念，而非单一用途的扩展点。</p>
-
 <p>加载后的插件以 <code>LoadedPlugin</code> 类型表示：</p>
-
-<pre><code class="language-typescript">// src/types/plugin.ts:48-70
-export type LoadedPlugin = {
-  name: string
-  manifest: PluginManifest
-  path: string
-  source: string
-  repository: string
-  enabled?: boolean
-  isBuiltin?: boolean
-  sha?: string
-  commandsPath?: string
-  skillsPath?: string
-  outputStylesPath?: string
-  hooksConfig?: HooksSettings
-  mcpServers?: Record<string, McpServerConfig>
-  lspServers?: Record<string, LspServerConfig>
-  settings?: Record<string, unknown>
-}</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/types/plugin.ts:48-70</span>
+<span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">LoadedPlugin</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
+<span class="w">  </span><span class="nx">manifest</span><span class="o">:</span><span class="w"> </span><span class="kt">PluginManifest</span>
+<span class="w">  </span><span class="nx">path</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
+<span class="w">  </span><span class="nx">source</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
+<span class="w">  </span><span class="nx">repository</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
+<span class="w">  </span><span class="nx">enabled?</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span>
+<span class="w">  </span><span class="nx">isBuiltin?</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span>
+<span class="w">  </span><span class="nx">sha?</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
+<span class="w">  </span><span class="nx">commandsPath?</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
+<span class="w">  </span><span class="nx">skillsPath?</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
+<span class="w">  </span><span class="nx">outputStylesPath?</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
+<span class="w">  </span><span class="nx">hooksConfig?</span><span class="o">:</span><span class="w"> </span><span class="kt">HooksSettings</span>
+<span class="w">  </span><span class="nx">mcpServers?</span><span class="o">:</span><span class="w"> </span><span class="kt">Record</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">McpServerConfig</span><span class="o">&gt;</span>
+<span class="w">  </span><span class="nx">lspServers?</span><span class="o">:</span><span class="w"> </span><span class="kt">Record</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">LspServerConfig</span><span class="o">&gt;</span>
+<span class="w">  </span><span class="nx">settings?</span><span class="o">:</span><span class="w"> </span><span class="kt">Record</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">unknown</span><span class="o">&gt;</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p>注意 <code>lspServers</code> 字段——插件甚至可以提供 LSP（语言服务器协议）服务器，这揭示了扩展系统的宏大愿景。</p>
-
-<h3>内置插件注册机制</h3>
-
+<h3 id="_2">内置插件注册机制</h3>
 <p>插件通过 <code>registerBuiltinPlugin()</code> 在启动时注册，由 <code>src/plugins/builtinPlugins.ts</code> 管理：</p>
-
-<pre><code class="language-typescript">// src/plugins/builtinPlugins.ts:28-32
-export function registerBuiltinPlugin(
-  definition: BuiltinPluginDefinition,
-): void {
-  BUILTIN_PLUGINS.set(definition.name, definition)
-}</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/plugins/builtinPlugins.ts:28-32</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">registerBuiltinPlugin</span><span class="p">(</span>
+<span class="w">  </span><span class="nx">definition</span><span class="o">:</span><span class="w"> </span><span class="kt">BuiltinPluginDefinition</span><span class="p">,</span>
+<span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">BUILTIN_PLUGINS</span><span class="p">.</span><span class="nx">set</span><span class="p">(</span><span class="nx">definition</span><span class="p">.</span><span class="nx">name</span><span class="p">,</span><span class="w"> </span><span class="nx">definition</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p>插件 ID 使用 <code>{name}@builtin</code> 格式（如 <code>telegram@builtin</code>），与市场插件的 <code>{name}@{marketplace}</code> 格式区分。</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/plugins/builtinPlugins.ts:70-71</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">pluginId</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sb">`</span><span class="si">${</span><span class="nx">name</span><span class="si">}</span><span class="sb">@</span><span class="si">${</span><span class="nx">BUILTIN_MARKETPLACE_NAME</span><span class="si">}</span><span class="sb">`</span>
+</code></pre></div>
 
-<pre><code class="language-typescript">// src/plugins/builtinPlugins.ts:70-71
-const pluginId = <code>${name}@${BUILTIN_MARKETPLACE_NAME}</code></code></pre>
-
-<h3>插件的启用/禁用逻辑</h3>
-
+<h3 id="_3">插件的启用/禁用逻辑</h3>
 <p>插件状态由用户设置（<code>settings.json</code>）持久化，启用逻辑遵循三层优先级：</p>
-
-<pre><code class="language-">用户偏好设置 > 插件默认值 > true（默认开启）</code></pre>
+<div class="codehilite"><pre><span></span><code>用户偏好设置 &gt; 插件默认值 &gt; true（默认开启）
+</code></pre></div>
 
 <p>代码体现在 <code>getBuiltinPlugins()</code> 函数中：</p>
-
-<pre><code class="language-typescript">// src/plugins/builtinPlugins.ts:72-76
-const userSetting = settings?.enabledPlugins?.[pluginId]
-const isEnabled =
-  userSetting !== undefined
-    ? userSetting === true
-    : (definition.defaultEnabled ?? true)</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/plugins/builtinPlugins.ts:72-76</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">userSetting</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">settings</span><span class="o">?</span><span class="p">.</span><span class="nx">enabledPlugins</span><span class="o">?</span><span class="p">.[</span><span class="nx">pluginId</span><span class="p">]</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">isEnabled</span><span class="w"> </span><span class="o">=</span>
+<span class="w">  </span><span class="nx">userSetting</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="kc">undefined</span>
+<span class="w">    </span><span class="o">?</span><span class="w"> </span><span class="nx">userSetting</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">    </span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="nx">definition</span><span class="p">.</span><span class="nx">defaultEnabled</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="kc">true</span><span class="p">)</span>
+</code></pre></div>
 
 <p>值得关注的是，代码注释明确说明：内置插件在技术上用 <code>source: 'bundled'</code> 标记其技能命令，而不是 <code>source: 'builtin'</code>，因为后者在 <code>Command</code> 类型中保留给硬编码的斜杠命令（<code>/help</code>、<code>/clear</code> 等）。这种命名区分虽然容易造成混乱，却是为了维持技能工具列表、分析上报和提示词截断豁免等机制的正确运作。</p>
-
-<h3>当前插件状态</h3>
-
+<h3 id="_4">当前插件状态</h3>
 <p>有趣的是，查看 <code>src/plugins/bundled/index.ts</code> 可以看到内置插件注册目前是空的：</p>
-
-<pre><code class="language-typescript">// src/plugins/bundled/index.ts:20-23
-export function initBuiltinPlugins(): void {
-  // No built-in plugins registered yet — this is the scaffolding for
-  // migrating bundled skills that should be user-toggleable.
-}</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/plugins/bundled/index.ts:20-23</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">initBuiltinPlugins</span><span class="p">()</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="c1">// No built-in plugins registered yet — this is the scaffolding for</span>
+<span class="w">  </span><span class="c1">// migrating bundled skills that should be user-toggleable.</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p>这说明完整的插件市场基础设施已经就绪，但从 bundled skills 到用户可切换的 built-in plugins 的迁移还在进行中。</p>
-
-<p>---</p>
-
-<h2>10.2 技能系统：Skill vs Plugin</h2>
-
-<h3>概念区分</h3>
-
+<hr />
+<h2 id="102-skill-vs-plugin">10.2 技能系统：Skill vs Plugin</h2>
+<h3 id="_5">概念区分</h3>
 <p>在 Claude Code 中，"技能"和"插件"是两个不同层次的概念：</p>
-
 <ul>
 <li><strong>插件（Plugin）</strong>：是一个"发布单元"，可以包含多个技能、钩子和 MCP 服务器</li>
 <li><strong>技能（Skill）</strong>：是一个可调用的单元，对应一个斜杠命令（如 <code>/commit</code>、<code>/review-pr</code>）</li>
 </ul>
-
 <p>技能本质上是一种特殊的 <code>Command</code> 对象（<code>type: 'prompt'</code>），包含：提示词内容、允许的工具列表、何时使用的说明（<code>whenToUse</code>）、模型配置等。</p>
-
-<h3>SkillTool：模型调用技能的入口</h3>
-
-<code>SkillTool</code> 是让 Claude 在对话中调用已注册技能的核心工具，位于 <code>src/tools/SkillTool/</code>。
-
+<h3 id="skilltool">SkillTool：模型调用技能的入口</h3>
+<p><code>SkillTool</code> 是让 Claude 在对话中调用已注册技能的核心工具，位于 <code>src/tools/SkillTool/</code>。</p>
 <p>工具提示词明确规定了调用规则：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/tools/SkillTool/prompt.ts:174-195</span>
+<span class="sb">`Execute a skill within the main conversation</span>
 
-<pre><code class="language-typescript">// src/tools/SkillTool/prompt.ts:174-195
-<code>Execute a skill within the main conversation
+<span class="sb">When users ask you to perform tasks, check if any of the available skills match.</span>
+<span class="sb">Skills provide specialized capabilities and domain knowledge.</span>
 
-<p>When users ask you to perform tasks, check if any of the available skills match.
-Skills provide specialized capabilities and domain knowledge.</p>
-
-<p>Important:
-<ul>
-<li>Available skills are listed in system-reminder messages in the conversation</li>
-<li>When a skill matches the user's request, this is a BLOCKING REQUIREMENT: invoke</li>
-</ul>
-  the relevant Skill tool BEFORE generating any other response about the task
-<ul>
-<li>NEVER mention a skill without actually calling this tool</code></code></pre></li>
-</ul></p>
+<span class="sb">Important:</span>
+<span class="sb">- Available skills are listed in system-reminder messages in the conversation</span>
+<span class="sb">- When a skill matches the user&#39;s request, this is a BLOCKING REQUIREMENT: invoke</span>
+<span class="sb">  the relevant Skill tool BEFORE generating any other response about the task</span>
+<span class="sb">- NEVER mention a skill without actually calling this tool`</span>
+</code></pre></div>
 
 <p>"BLOCKING REQUIREMENT"——这是一种强制性规范，要求模型必须先调用技能工具，不能只口头提及。这防止了模型"说空话"而不实际执行的行为。</p>
-
-<h3>技能发现与上下文预算</h3>
-
+<h3 id="_6">技能发现与上下文预算</h3>
 <p>技能列表不是全量注入系统提示，而是受到<strong>上下文窗口预算</strong>管控：</p>
-
-<pre><code class="language-typescript">// src/tools/SkillTool/prompt.ts:21-23
-export const SKILL_BUDGET_CONTEXT_PERCENT = 0.01
-export const CHARS_PER_TOKEN = 4
-export const DEFAULT_CHAR_BUDGET = 8_000 // Fallback: 1% of 200k × 4</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/tools/SkillTool/prompt.ts:21-23</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">SKILL_BUDGET_CONTEXT_PERCENT</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.01</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">CHARS_PER_TOKEN</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">4</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">DEFAULT_CHAR_BUDGET</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">8</span><span class="nx">_000</span><span class="w"> </span><span class="c1">// Fallback: 1% of 200k × 4</span>
+</code></pre></div>
 
 <p>技能列表默认只占用上下文窗口的 1%。当技能数量过多时，系统有三级降级策略：
 1. 完整描述（全部放得下时）
 2. 截断非内置技能的描述（保留 bundled 技能的完整描述）
 3. 仅保留技能名称（极端情况）</p>
-
-<pre><code class="language-typescript">// src/tools/SkillTool/prompt.ts:96-99
-// Partition into bundled (never truncated) and rest
-const bundledIndices = new Set<number>()
-const restCommands: Command[] = []
-for (let i = 0; i < commands.length; i++) {
-  const cmd = commands[i]!
-  if (cmd.type === 'prompt' && cmd.source === 'bundled') {
-    bundledIndices.add(i)</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/tools/SkillTool/prompt.ts:96-99</span>
+<span class="c1">// Partition into bundled (never truncated) and rest</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">bundledIndices</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nb">Set</span><span class="o">&lt;</span><span class="kt">number</span><span class="o">&gt;</span><span class="p">()</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">restCommands</span><span class="o">:</span><span class="w"> </span><span class="kt">Command</span><span class="p">[]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[]</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">let</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="nx">commands</span><span class="p">.</span><span class="nx">length</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">cmd</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">commands</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span><span class="o">!</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">cmd</span><span class="p">.</span><span class="kr">type</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;prompt&#39;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">cmd</span><span class="p">.</span><span class="nx">source</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;bundled&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">bundledIndices</span><span class="p">.</span><span class="nx">add</span><span class="p">(</span><span class="nx">i</span><span class="p">)</span>
+</code></pre></div>
 
 <p>每条技能描述单独设有硬性字符上限：</p>
-
-<pre><code class="language-typescript">// src/tools/SkillTool/prompt.ts:29
-export const MAX_LISTING_DESC_CHARS = 250</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/tools/SkillTool/prompt.ts:29</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">MAX_LISTING_DESC_CHARS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">250</span>
+</code></pre></div>
 
 <p>250 字符限制背后的设计哲学：技能列表只是"发现界面"，完整内容在调用时才加载，所以冗长的描述只是浪费首轮缓存 token。</p>
-
-<h3>技能的来源多样性</h3>
-
+<h3 id="_7">技能的来源多样性</h3>
 <p>SkillTool 聚合了多个来源的技能：</p>
-
-<pre><code class="language-typescript">// src/tools/SkillTool/SkillTool.ts:81-94
-async function getAllCommands(context: ToolUseContext): Promise<Command[]> {
-  const mcpSkills = context
-    .getAppState()
-    .mcp.commands.filter(
-      cmd => cmd.type === 'prompt' && cmd.loadedFrom === 'mcp',
-    )
-  if (mcpSkills.length === 0) return getCommands(getProjectRoot())
-  const localCommands = await getCommands(getProjectRoot())
-  return uniqBy([...localCommands, ...mcpSkills], 'name')
-}</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/tools/SkillTool/SkillTool.ts:81-94</span>
+<span class="k">async</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">getAllCommands</span><span class="p">(</span><span class="nx">context</span><span class="o">:</span><span class="w"> </span><span class="kt">ToolUseContext</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="nx">Command</span><span class="p">[]</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">mcpSkills</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">context</span>
+<span class="w">    </span><span class="p">.</span><span class="nx">getAppState</span><span class="p">()</span>
+<span class="w">    </span><span class="p">.</span><span class="nx">mcp</span><span class="p">.</span><span class="nx">commands</span><span class="p">.</span><span class="nx">filter</span><span class="p">(</span>
+<span class="w">      </span><span class="nx">cmd</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">cmd</span><span class="p">.</span><span class="kr">type</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;prompt&#39;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">cmd</span><span class="p">.</span><span class="nx">loadedFrom</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;mcp&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="p">)</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">mcpSkills</span><span class="p">.</span><span class="nx">length</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="mf">0</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nx">getCommands</span><span class="p">(</span><span class="nx">getProjectRoot</span><span class="p">())</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">localCommands</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">getCommands</span><span class="p">(</span><span class="nx">getProjectRoot</span><span class="p">())</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">uniqBy</span><span class="p">([...</span><span class="nx">localCommands</span><span class="p">,</span><span class="w"> </span><span class="p">...</span><span class="nx">mcpSkills</span><span class="p">],</span><span class="w"> </span><span class="s1">&#39;name&#39;</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p>技能来源：本地文件系统（<code>.claude/</code> 目录）+ 插件 + MCP 服务器提供的技能。</p>
-
-<p>---</p>
-
-<h2>10.3 记忆系统：让 Claude 跨会话学习</h2>
-
+<hr />
+<h2 id="103-claude">10.3 记忆系统：让 Claude 跨会话学习</h2>
 <p>Claude Code 的记忆系统是一套精心设计的持久化知识管理机制，核心文件位于 <code>src/memdir/</code>。</p>
+<h3 id="_8">记忆系统架构</h3>
+<div class="codehilite"><pre><span></span><code><span class="n">graph</span><span class="w"> </span><span class="n">TD</span>
+<span class="w">    </span><span class="n">A</span><span class="o">[</span><span class="n">会话开始</span><span class="o">]</span><span class="w"> </span><span class="c1">--&gt; B[loadMemoryPrompt]</span>
+<span class="w">    </span><span class="n">B</span><span class="w"> </span><span class="c1">--&gt; C{检查启用状态}</span>
+<span class="w">    </span><span class="n">C</span><span class="w"> </span><span class="c1">--&gt;|KAIROS模式| D[buildAssistantDailyLogPrompt]</span>
+<span class="w">    </span><span class="n">C</span><span class="w"> </span><span class="c1">--&gt;|团队模式TEAMMEM| E[buildCombinedMemoryPrompt]</span>
+<span class="w">    </span><span class="n">C</span><span class="w"> </span><span class="c1">--&gt;|标准模式| F[buildMemoryLines]</span>
+<span class="w">    </span><span class="n">C</span><span class="w"> </span><span class="c1">--&gt;|已禁用| G[null]</span>
 
-<h3>记忆系统架构</h3>
+<span class="w">    </span><span class="n">F</span><span class="w"> </span><span class="c1">--&gt; H[注入系统提示词]</span>
 
-<pre><code class="language-mermaid">graph TD
-    A[会话开始] --> B[loadMemoryPrompt]
-    B --> C{检查启用状态}
-    C -->|KAIROS模式| D[buildAssistantDailyLogPrompt]
-    C -->|团队模式TEAMMEM| E[buildCombinedMemoryPrompt]
-    C -->|标准模式| F[buildMemoryLines]
-    C -->|已禁用| G[null]
+<span class="w">    </span><span class="n">I</span><span class="o">[</span><span class="n">会话中</span><span class="o">]</span><span class="w"> </span><span class="c1">--&gt; J[Claude写记忆文件]</span>
+<span class="w">    </span><span class="n">J</span><span class="w"> </span><span class="c1">--&gt; K[Step 1: 写topic文件]</span>
+<span class="w">    </span><span class="n">J</span><span class="w"> </span><span class="c1">--&gt; L[Step 2: 更新MEMORY.md索引]</span>
 
-<p>F --> H[注入系统提示词]</p>
+<span class="w">    </span><span class="n">M</span><span class="o">[</span><span class="n">下次会话</span><span class="o">]</span><span class="w"> </span><span class="c1">--&gt; N[MEMORY.md加载为上下文]</span>
+<span class="w">    </span><span class="n">N</span><span class="w"> </span><span class="c1">--&gt; O[按需加载topic文件]</span>
+</code></pre></div>
 
-<p>I[会话中] --> J[Claude写记忆文件]
-    J --> K[Step 1: 写topic文件]
-    J --> L[Step 2: 更新MEMORY.md索引]</p>
-
-<p>M[下次会话] --> N[MEMORY.md加载为上下文]
-    N --> O[按需加载topic文件]</code></pre></p>
-
-<h3>记忆存储路径</h3>
-
+<h3 id="_9">记忆存储路径</h3>
 <p>记忆目录的路径解析有四层优先级（<code>src/memdir/paths.ts</code>）：</p>
+<div class="codehilite"><pre><span></span><code><span class="mf">1.</span><span class="w"> </span><span class="n">CLAUDE_COWORK_MEMORY_PATH_OVERRIDE</span><span class="w"> </span><span class="n">环境变量</span><span class="err">（</span><span class="n">Cowork</span><span class="w"> </span><span class="n">全路径覆盖</span><span class="err">）</span>
+<span class="mf">2.</span><span class="w"> </span><span class="n">settings</span><span class="mf">.</span><span class="n">json</span><span class="w"> </span><span class="n">中的</span><span class="w"> </span><span class="n">autoMemoryDirectory</span><span class="err">（</span><span class="n">支持</span><span class="w"> </span><span class="err">~</span><span class="o">/</span><span class="w"> </span><span class="n">展开</span><span class="err">）</span>
+<span class="mf">3.</span><span class="w"> </span><span class="o">&lt;</span><span class="n">memoryBase</span><span class="o">&gt;/</span><span class="n">projects</span><span class="o">/&lt;</span><span class="n">sanitized</span><span class="o">-</span><span class="n">git</span><span class="o">-</span><span class="n">root</span><span class="o">&gt;/</span><span class="n">memory</span><span class="o">/</span>
+<span class="w">   </span><span class="err">（</span><span class="n">基于</span><span class="w"> </span><span class="n">Git</span><span class="w"> </span><span class="n">根目录</span><span class="err">，</span><span class="n">保证同仓库不同</span><span class="w"> </span><span class="n">worktree</span><span class="w"> </span><span class="n">共享记忆</span><span class="err">）</span>
+</code></pre></div>
 
-<pre><code class="language-">1. CLAUDE_COWORK_MEMORY_PATH_OVERRIDE 环境变量（Cowork 全路径覆盖）
-2. settings.json 中的 autoMemoryDirectory（支持 ~/ 展开）
-3. <memoryBase>/projects/<sanitized-git-root>/memory/
-   （基于 Git 根目录，保证同仓库不同 worktree 共享记忆）</code></pre>
-
-<pre><code class="language-typescript">// src/memdir/paths.ts:223-235
-export const getAutoMemPath = memoize(
-  (): string => {
-    const override = getAutoMemPathOverride() ?? getAutoMemPathSetting()
-    if (override) {
-      return override
-    }
-    const projectsDir = join(getMemoryBaseDir(), 'projects')
-    return (
-      join(projectsDir, sanitizePath(getAutoMemBase()), AUTO_MEM_DIRNAME) + sep
-    ).normalize('NFC')
-  },
-  () => getProjectRoot(),
-)</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/memdir/paths.ts:223-235</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">getAutoMemPath</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">memoize</span><span class="p">(</span>
+<span class="w">  </span><span class="p">()</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="kd">override</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">getAutoMemPathOverride</span><span class="p">()</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="nx">getAutoMemPathSetting</span><span class="p">()</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="kd">override</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="k">return</span><span class="w"> </span><span class="kd">override</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">projectsDir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">join</span><span class="p">(</span><span class="nx">getMemoryBaseDir</span><span class="p">(),</span><span class="w"> </span><span class="s1">&#39;projects&#39;</span><span class="p">)</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">(</span>
+<span class="w">      </span><span class="nx">join</span><span class="p">(</span><span class="nx">projectsDir</span><span class="p">,</span><span class="w"> </span><span class="nx">sanitizePath</span><span class="p">(</span><span class="nx">getAutoMemBase</span><span class="p">()),</span><span class="w"> </span><span class="nx">AUTO_MEM_DIRNAME</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">sep</span>
+<span class="w">    </span><span class="p">).</span><span class="nx">normalize</span><span class="p">(</span><span class="s1">&#39;NFC&#39;</span><span class="p">)</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">getProjectRoot</span><span class="p">(),</span>
+<span class="p">)</span>
+</code></pre></div>
 
 <p>一个关键的安全设计：<code>projectSettings</code>（即提交到仓库的 <code>.claude/settings.json</code>）被<strong>故意排除</strong>在 <code>autoMemoryDirectory</code> 的读取范围之外——恶意仓库不能通过此字段将记忆目录重定向到 <code>~/.ssh</code> 等敏感路径。</p>
-
-<h3>记忆文件的双层结构</h3>
-
+<h3 id="_10">记忆文件的双层结构</h3>
 <p>记忆系统使用 <code>MEMORY.md</code> + 主题文件的双层结构：</p>
-
 <ul>
 <li><strong><code>MEMORY.md</code></strong>：索引文件，每条记忆一行，如 <code>- [Title](file.md) — 一行摘要</code></li>
 <li><strong>主题文件</strong>（如 <code>user_role.md</code>、<code>feedback_testing.md</code>）：存储详细内容</li>
 </ul>
-
 <p>MEMORY.md 有严格的大小限制：</p>
-
-<pre><code class="language-typescript">// src/memdir/memdir.ts:35-38
-export const ENTRYPOINT_NAME = 'MEMORY.md'
-export const MAX_ENTRYPOINT_LINES = 200
-export const MAX_ENTRYPOINT_BYTES = 25_000</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/memdir/memdir.ts:35-38</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">ENTRYPOINT_NAME</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;MEMORY.md&#39;</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">MAX_ENTRYPOINT_LINES</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">200</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">MAX_ENTRYPOINT_BYTES</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">25</span><span class="nx">_000</span>
+</code></pre></div>
 
 <p>超出限制时，系统会截断内容并附加警告提示，告知模型只有部分内容被加载。</p>
-
-<h3>记忆的四种类型</h3>
-
+<h3 id="_11">记忆的四种类型</h3>
 <p>记忆系统定义了严格的四类记忆分类（<code>src/memdir/memoryTypes.ts</code>）：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/memdir/memoryTypes.ts:14-19</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">MEMORY_TYPES</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="s1">&#39;user&#39;</span><span class="p">,</span><span class="w">      </span><span class="c1">// 用户身份、角色、偏好</span>
+<span class="w">  </span><span class="s1">&#39;feedback&#39;</span><span class="p">,</span><span class="w">  </span><span class="c1">// 工作方式反馈（避免的和应保持的行为）</span>
+<span class="w">  </span><span class="s1">&#39;project&#39;</span><span class="p">,</span><span class="w">   </span><span class="c1">// 项目背景（目标、截止日期、决策）</span>
+<span class="w">  </span><span class="s1">&#39;reference&#39;</span><span class="p">,</span><span class="w"> </span><span class="c1">// 外部系统指针（Linear、Grafana等）</span>
+<span class="p">]</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="kd">const</span>
+</code></pre></div>
 
-<pre><code class="language-typescript">// src/memdir/memoryTypes.ts:14-19
-export const MEMORY_TYPES = [
-  'user',      // 用户身份、角色、偏好
-  'feedback',  // 工作方式反馈（避免的和应保持的行为）
-  'project',   // 项目背景（目标、截止日期、决策）
-  'reference', // 外部系统指针（Linear、Grafana等）
-] as const</code></pre>
-
-<strong>不应该存入记忆的内容</strong>也有明确的排除清单：代码模式、Git 历史、调试方案、CLAUDE.md 中已记录的内容、当前会话的临时状态。
-
+<p><strong>不应该存入记忆的内容</strong>也有明确的排除清单：代码模式、Git 历史、调试方案、CLAUDE.md 中已记录的内容、当前会话的临时状态。</p>
 <p>注释中有一个关键评估结论：即使用户明确要求保存 PR 列表，系统也应询问"什么是其中不明显的/令人惊讶的部分"——那才是值得记忆的内容。这防止了记忆系统沦为活动日志。</p>
-
-<h3>记忆文件格式</h3>
-
+<h3 id="_12">记忆文件格式</h3>
 <p>每个记忆文件都有标准 frontmatter：</p>
-
-<pre><code class="language-markdown">---
+<div class="codehilite"><pre><span></span><code>---
 name: {{memory name}}
 description: {{one-line description — used to decide relevance in future conversations}}
-type: {{user, feedback, project, reference}}
----
+<span class="gu">type: {{user, feedback, project, reference}}</span>
+<span class="gu">---</span>
 
-<p>{{memory content}}</code></pre></p>
+{{memory content}}
+</code></pre></div>
 
-<code>description</code> 字段的设计很有价值：它不仅是标签，更是"相关性判断依据"，在记忆检索时会被专门的模型用于快速筛选。
-
-<h3>智能记忆检索：用 AI 选 AI 的记忆</h3>
-
-<code>src/memdir/findRelevantMemories.ts</code> 实现了一个两阶段的记忆检索流程：
-
-<pre><code class="language-typescript">// src/memdir/findRelevantMemories.ts:39-75
-export async function findRelevantMemories(
-  query: string,
-  memoryDir: string,
-  signal: AbortSignal,
-  recentTools: readonly string[] = [],
-  alreadySurfaced: ReadonlySet<string> = new Set(),
-): Promise<RelevantMemory[]> {
-  const memories = (await scanMemoryFiles(memoryDir, signal)).filter(
-    m => !alreadySurfaced.has(m.filePath),
-  )
-  // 调用 Sonnet 模型来选择相关记忆（最多5个）
-  const selectedFilenames = await selectRelevantMemories(
-    query, memories, signal, recentTools,
-  )
-  ...
-}</code></pre>
+<p><code>description</code> 字段的设计很有价值：它不仅是标签，更是"相关性判断依据"，在记忆检索时会被专门的模型用于快速筛选。</p>
+<h3 id="ai-ai">智能记忆检索：用 AI 选 AI 的记忆</h3>
+<p><code>src/memdir/findRelevantMemories.ts</code> 实现了一个两阶段的记忆检索流程：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/memdir/findRelevantMemories.ts:39-75</span>
+<span class="k">export</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">findRelevantMemories</span><span class="p">(</span>
+<span class="w">  </span><span class="nx">query</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">memoryDir</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">signal</span><span class="o">:</span><span class="w"> </span><span class="kt">AbortSignal</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">recentTools</span><span class="o">:</span><span class="w"> </span><span class="kt">readonly</span><span class="w"> </span><span class="kt">string</span><span class="p">[]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">  </span><span class="nx">alreadySurfaced</span><span class="o">:</span><span class="w"> </span><span class="kt">ReadonlySet</span><span class="o">&lt;</span><span class="kt">string</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nb">Set</span><span class="p">(),</span>
+<span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="nx">RelevantMemory</span><span class="p">[]</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">memories</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="k">await</span><span class="w"> </span><span class="nx">scanMemoryFiles</span><span class="p">(</span><span class="nx">memoryDir</span><span class="p">,</span><span class="w"> </span><span class="nx">signal</span><span class="p">)).</span><span class="nx">filter</span><span class="p">(</span>
+<span class="w">    </span><span class="nx">m</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="o">!</span><span class="nx">alreadySurfaced</span><span class="p">.</span><span class="nx">has</span><span class="p">(</span><span class="nx">m</span><span class="p">.</span><span class="nx">filePath</span><span class="p">),</span>
+<span class="w">  </span><span class="p">)</span>
+<span class="w">  </span><span class="c1">// 调用 Sonnet 模型来选择相关记忆（最多5个）</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">selectedFilenames</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">selectRelevantMemories</span><span class="p">(</span>
+<span class="w">    </span><span class="nx">query</span><span class="p">,</span><span class="w"> </span><span class="nx">memories</span><span class="p">,</span><span class="w"> </span><span class="nx">signal</span><span class="p">,</span><span class="w"> </span><span class="nx">recentTools</span><span class="p">,</span>
+<span class="w">  </span><span class="p">)</span>
+<span class="w">  </span><span class="p">...</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p>系统用 Sonnet 模型来判断哪些记忆文件与当前查询相关——一种"用 AI 管理 AI 的上下文"的元认知设计。选择器还有一个细节：如果模型最近正在使用某个工具（<code>recentTools</code>），就不会推荐关于该工具 API 文档的记忆，避免重复噪声。</p>
-
-<h3>记忆禁用条件</h3>
-
-<pre><code class="language-typescript">// src/memdir/paths.ts:30-54
-export function isAutoMemoryEnabled(): boolean {
-  // 优先级：环境变量 > --bare模式 > 无持久存储的远程 > settings.json > 默认开启
-  if (isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY)) return false
-  if (isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)) return false
-  if (isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) &&
-      !process.env.CLAUDE_CODE_REMOTE_MEMORY_DIR) return false
-  const settings = getInitialSettings()
-  if (settings.autoMemoryEnabled !== undefined) return settings.autoMemoryEnabled
-  return true
-}</code></pre>
+<h3 id="_13">记忆禁用条件</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/memdir/paths.ts:30-54</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">isAutoMemoryEnabled</span><span class="p">()</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="c1">// 优先级：环境变量 &gt; --bare模式 &gt; 无持久存储的远程 &gt; settings.json &gt; 默认开启</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">isEnvTruthy</span><span class="p">(</span><span class="nx">process</span><span class="p">.</span><span class="nx">env</span><span class="p">.</span><span class="nx">CLAUDE_CODE_DISABLE_AUTO_MEMORY</span><span class="p">))</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">isEnvTruthy</span><span class="p">(</span><span class="nx">process</span><span class="p">.</span><span class="nx">env</span><span class="p">.</span><span class="nx">CLAUDE_CODE_SIMPLE</span><span class="p">))</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">isEnvTruthy</span><span class="p">(</span><span class="nx">process</span><span class="p">.</span><span class="nx">env</span><span class="p">.</span><span class="nx">CLAUDE_CODE_REMOTE</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span>
+<span class="w">      </span><span class="o">!</span><span class="nx">process</span><span class="p">.</span><span class="nx">env</span><span class="p">.</span><span class="nx">CLAUDE_CODE_REMOTE_MEMORY_DIR</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">settings</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">getInitialSettings</span><span class="p">()</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">settings</span><span class="p">.</span><span class="nx">autoMemoryEnabled</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="kc">undefined</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nx">settings</span><span class="p">.</span><span class="nx">autoMemoryEnabled</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p>记忆系统在 <code>--bare</code> 模式（<code>CLAUDE_CODE_SIMPLE</code>）和无持久存储的远程部署中自动禁用。</p>
-
-<p>---</p>
-
-<h2>10.4 团队记忆与 KAIROS 助手模式</h2>
-
-<h3>团队记忆（TEAMMEM）</h3>
-
+<hr />
+<h2 id="104-kairos">10.4 团队记忆与 KAIROS 助手模式</h2>
+<h3 id="teammem">团队记忆（TEAMMEM）</h3>
 <p>通过特性标志 <code>feature('TEAMMEM')</code> 启用的团队记忆功能，在个人记忆目录下增加 <code>team/</code> 子目录，实现同一项目多个协作者之间共享记忆。</p>
+<p>团队记忆与个人记忆的路径关系：</p>
+<div class="codehilite"><pre><span></span><code>~/.claude/projects/&lt;project&gt;/memory/        ← 个人记忆
+~/.claude/projects/&lt;project&gt;/memory/team/   ← 团队共享记忆
+</code></pre></div>
 
-<p>团队记忆与个人记忆的路径关系：
-<pre><code class="language-">~/.claude/projects/<project>/memory/        ← 个人记忆
-~/.claude/projects/<project>/memory/team/   ← 团队共享记忆</code></pre></p>
-
-<h3>KAIROS 助手模式</h3>
-
+<h3 id="kairos">KAIROS 助手模式</h3>
 <p>当 <code>feature('KAIROS')</code> 激活时，记忆写入模式从"实时维护索引"切换为"每日追加日志"：</p>
-
-<pre><code class="language-typescript">// src/memdir/memdir.ts:335
-// 日志文件路径模式: <autoMemPath>/logs/YYYY/MM/YYYY-MM-DD.md
-const logPathPattern = join(memoryDir, 'logs', 'YYYY', 'MM', 'YYYY-MM-DD.md')</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/memdir/memdir.ts:335</span>
+<span class="c1">// 日志文件路径模式: &lt;autoMemPath&gt;/logs/YYYY/MM/YYYY-MM-DD.md</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">logPathPattern</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">join</span><span class="p">(</span><span class="nx">memoryDir</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;logs&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;YYYY&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;MM&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;YYYY-MM-DD.md&#39;</span><span class="p">)</span>
+</code></pre></div>
 
 <p>这种设计专为长期运行的助手会话设计：避免频繁重写索引文件，改为按日期追加日志，再由独立的 <code>/dream</code> 技能夜间将日志蒸馏整理成主题文件。</p>
-
-<p>---</p>
-
-<h2>小结</h2>
-
+<hr />
+<h2 id="_14">小结</h2>
 <p>Claude Code 的插件-技能-记忆三层架构代表了一种清晰的关切分离：</p>
-
-<p>| 层次 | 作用 | 持久化 |
-|------|------|--------|
-| 插件 | 功能分发/发布单元 | 用户设置（启用/禁用状态） |
-| 技能 | 专门能力的封装 | 文件系统（<code>.claude/commands/</code>） |
-| 记忆 | 跨会话上下文积累 | 结构化文件（<code>~/.claude/projects/</code>） |</p>
-
+<table>
+<thead>
+<tr>
+<th>层次</th>
+<th>作用</th>
+<th>持久化</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>插件</td>
+<td>功能分发/发布单元</td>
+<td>用户设置（启用/禁用状态）</td>
+</tr>
+<tr>
+<td>技能</td>
+<td>专门能力的封装</td>
+<td>文件系统（<code>.claude/commands/</code>）</td>
+</tr>
+<tr>
+<td>记忆</td>
+<td>跨会话上下文积累</td>
+<td>结构化文件（<code>~/.claude/projects/</code>）</td>
+</tr>
+</tbody>
+</table>
 <p>这三套系统的共同设计原则是<strong>上下文感知的动态加载</strong>：不是一次性注入所有内容，而是按需、按预算、按相关性动态装配上下文——这对于 context window 有限的 LLM 来说是正确的工程选择。</p>
             </article>
             

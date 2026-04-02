@@ -7,7 +7,11 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.1/github-markdown.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script>hljs.highlightAll();</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.0/mermaid.min.js"></script>
+    <script>
+        hljs.highlightAll();
+        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+    </script>
     <style>
         body {
             margin: 0;
@@ -20,6 +24,9 @@
             color: white;
             padding: 15px 0;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
         }
         .nav-container {
             max-width: 1200px;
@@ -33,9 +40,10 @@
             color: white;
             text-decoration: none;
             font-weight: 500;
+            transition: opacity 0.3s;
         }
         .nav a:hover {
-            text-decoration: underline;
+            opacity: 0.8;
         }
         .container {
             max-width: 1200px;
@@ -51,8 +59,41 @@
         .markdown-body {
             box-sizing: border-box;
             min-width: 200px;
-            max-width: 980px;
+            max-width: 100%;
             margin: 0 auto;
+        }
+        .markdown-body pre {
+            background: #f6f8fa;
+            border-radius: 6px;
+            padding: 16px;
+        }
+        .markdown-body code {
+            background: #f6f8fa;
+            padding: 0.2em 0.4em;
+            border-radius: 3px;
+            font-size: 85%;
+        }
+        .markdown-body pre code {
+            background: transparent;
+            padding: 0;
+        }
+        .markdown-body table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 20px 0;
+        }
+        .markdown-body table th,
+        .markdown-body table td {
+            border: 1px solid #dfe2e5;
+            padding: 8px 13px;
+        }
+        .markdown-body table th {
+            background: #f6f8fa;
+            font-weight: 600;
+        }
+        .mermaid {
+            text-align: center;
+            margin: 30px 0;
         }
         .pagination {
             display: flex;
@@ -80,6 +121,12 @@
         .pagination .next::after {
             content: " →";
         }
+        blockquote {
+            border-left: 4px solid #667eea;
+            padding-left: 20px;
+            color: #6a737d;
+            margin: 20px 0;
+        }
         @media (max-width: 768px) {
             .content {
                 padding: 30px 20px;
@@ -91,293 +138,268 @@
     <div class="nav">
         <div class="nav-container">
             <a href="../index.html">📘 解密 Claude Code</a>
-            <a href="../index.html#toc">目录</a>
+            <a href="../index.html">目录</a>
         </div>
     </div>
     
     <div class="container">
         <div class="content">
             <article class="markdown-body">
-<h1>第六章：Agent 子系统与多智能体协作</h1>
-
-<p>> Claude Code 的 Agent 子系统是其最复杂的模块之一。从单个子任务代理到多智能体并行编排，这套机制将 Claude 从一个交互式助手提升为可以自主分解、并发执行复杂工程任务的编排平台。本章通过阅读真实源码，逐层拆解 Agent 的定义、生命周期、隔离机制与多智能体通信协议。</p>
-
-<p>---</p>
-
-<h2>6.1 Agent 工具的入口：AgentTool</h2>
-
+<h1 id="agent">第六章：Agent 子系统与多智能体协作</h1>
+<blockquote>
+<p>Claude Code 的 Agent 子系统是其最复杂的模块之一。从单个子任务代理到多智能体并行编排，这套机制将 Claude 从一个交互式助手提升为可以自主分解、并发执行复杂工程任务的编排平台。本章通过阅读真实源码，逐层拆解 Agent 的定义、生命周期、隔离机制与多智能体通信协议。</p>
+</blockquote>
+<hr />
+<h2 id="61-agent-agenttool">6.1 Agent 工具的入口：AgentTool</h2>
 <p>Agent 子系统的核心入口是 <code>src/tools/AgentTool/AgentTool.tsx</code>。这个文件导出了名为 <code>AgentTool</code> 的工具定义，它同时兼容两个名称：</p>
-
-<pre><code class="language-typescript">// src/tools/AgentTool/constants.ts:1-3
-export const AGENT_TOOL_NAME = 'Agent'
-// Legacy wire name for backward compat
-export const LEGACY_AGENT_TOOL_NAME = 'Task'</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/tools/AgentTool/constants.ts:1-3</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">AGENT_TOOL_NAME</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;Agent&#39;</span>
+<span class="c1">// Legacy wire name for backward compat</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">LEGACY_AGENT_TOOL_NAME</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;Task&#39;</span>
+</code></pre></div>
 
 <p>工具名称从 <code>Task</code> 改为 <code>Agent</code> 是一次重要的语义升级，但为了向后兼容仍保留了旧名称作为别名。</p>
-
-<h3>输入 Schema</h3>
-
+<h3 id="schema">输入 Schema</h3>
 <p>AgentTool 的输入 Schema 分为两层：基础 Schema 和完整 Schema（<code>src/tools/AgentTool/AgentTool.tsx:82-102</code>）。</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 基础字段（所有情况均可用）</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">baseInputSchema</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">lazySchema</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">z</span><span class="p">.</span><span class="nx">object</span><span class="p">({</span>
+<span class="w">  </span><span class="nx">description</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">(),</span><span class="w">          </span><span class="c1">// 3-5 个词的任务简述</span>
+<span class="w">  </span><span class="nx">prompt</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">(),</span><span class="w">               </span><span class="c1">// 子 Agent 执行的完整指令</span>
+<span class="w">  </span><span class="nx">subagent_type</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">().</span><span class="nx">optional</span><span class="p">(),</span><span class="w"> </span><span class="c1">// 指定 Agent 类型</span>
+<span class="w">  </span><span class="nx">model</span><span class="o">:</span><span class="w"> </span><span class="kt">z.enum</span><span class="p">([</span><span class="s1">&#39;sonnet&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;opus&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;haiku&#39;</span><span class="p">]).</span><span class="nx">optional</span><span class="p">(),</span><span class="w"> </span><span class="c1">// 模型覆盖</span>
+<span class="w">  </span><span class="nx">run_in_background</span><span class="o">:</span><span class="w"> </span><span class="kt">z.boolean</span><span class="p">().</span><span class="nx">optional</span><span class="p">(),</span><span class="w"> </span><span class="c1">// 是否后台异步运行</span>
+<span class="p">}));</span>
 
-<pre><code class="language-typescript">// 基础字段（所有情况均可用）
-const baseInputSchema = lazySchema(() => z.object({
-  description: z.string(),          // 3-5 个词的任务简述
-  prompt: z.string(),               // 子 Agent 执行的完整指令
-  subagent_type: z.string().optional(), // 指定 Agent 类型
-  model: z.enum(['sonnet', 'opus', 'haiku']).optional(), // 模型覆盖
-  run_in_background: z.boolean().optional(), // 是否后台异步运行
-}));
-
-<p>// 完整 Schema 额外包含多智能体参数
-const fullInputSchema = lazySchema(() => {
-  const multiAgentInputSchema = z.object({
-    name: z.string().optional(),        // Agent 名称（供 SendMessage 路由）
-    team_name: z.string().optional(),   // 所属团队
-    mode: permissionModeSchema().optional(), // 权限模式（如 "plan"）
-  });
-  return baseInputSchema().merge(multiAgentInputSchema).extend({
-    isolation: z.enum(['worktree']).optional(), // 隔离模式
-    cwd: z.string().optional(),                 // 工作目录覆盖
-  });
-});</code></pre></p>
+<span class="c1">// 完整 Schema 额外包含多智能体参数</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">fullInputSchema</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">lazySchema</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">multiAgentInputSchema</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">z</span><span class="p">.</span><span class="nx">object</span><span class="p">({</span>
+<span class="w">    </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">().</span><span class="nx">optional</span><span class="p">(),</span><span class="w">        </span><span class="c1">// Agent 名称（供 SendMessage 路由）</span>
+<span class="w">    </span><span class="nx">team_name</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">().</span><span class="nx">optional</span><span class="p">(),</span><span class="w">   </span><span class="c1">// 所属团队</span>
+<span class="w">    </span><span class="nx">mode</span><span class="o">:</span><span class="w"> </span><span class="kt">permissionModeSchema</span><span class="p">().</span><span class="nx">optional</span><span class="p">(),</span><span class="w"> </span><span class="c1">// 权限模式（如 &quot;plan&quot;）</span>
+<span class="w">  </span><span class="p">});</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">baseInputSchema</span><span class="p">().</span><span class="nx">merge</span><span class="p">(</span><span class="nx">multiAgentInputSchema</span><span class="p">).</span><span class="nx">extend</span><span class="p">({</span>
+<span class="w">    </span><span class="nx">isolation</span><span class="o">:</span><span class="w"> </span><span class="kt">z.enum</span><span class="p">([</span><span class="s1">&#39;worktree&#39;</span><span class="p">]).</span><span class="nx">optional</span><span class="p">(),</span><span class="w"> </span><span class="c1">// 隔离模式</span>
+<span class="w">    </span><span class="nx">cwd</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">().</span><span class="nx">optional</span><span class="p">(),</span><span class="w">                 </span><span class="c1">// 工作目录覆盖</span>
+<span class="w">  </span><span class="p">});</span>
+<span class="p">});</span>
+</code></pre></div>
 
 <p>值得注意的是，<code>isolation</code> 字段在外部版本中只支持 <code>'worktree'</code>，内部版本额外支持 <code>'remote'</code>（调度到远程 CCR 环境）。<code>cwd</code> 字段由 <code>feature('KAIROS')</code> 门控，不在所有版本中可见。</p>
-
-<h3>输出状态机</h3>
-
+<h3 id="_1">输出状态机</h3>
 <p>Agent 执行完成后的输出有四种状态，构成一个清晰的状态机（<code>src/tools/AgentTool/AgentTool.tsx:141-191</code>）：</p>
+<table>
+<thead>
+<tr>
+<th>状态</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>completed</code></td>
+<td>同步执行完毕，包含完整结果</td>
+</tr>
+<tr>
+<td><code>async_launched</code></td>
+<td>已异步启动，返回 agentId 和 outputFile 路径</td>
+</tr>
+<tr>
+<td><code>teammate_spawned</code></td>
+<td>以 tmux 模式生成了一个并行 Teammate</td>
+</tr>
+<tr>
+<td><code>remote_launched</code></td>
+<td>在远端 CCR 会话中启动（仅内部版本）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="62-agent-runagent">6.2 Agent 的生命周期：runAgent</h2>
+<p><code>src/tools/AgentTool/runAgent.ts</code> 是执行 Agent 核心逻辑的生成器函数，其签名揭示了 Agent 运行时所需的全部上下文（<code>runAgent.ts:248-329</code>）：</p>
+<div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="kd">function</span><span class="o">*</span><span class="w"> </span><span class="nx">runAgent</span><span class="p">({</span>
+<span class="w">  </span><span class="nx">agentDefinition</span><span class="p">,</span><span class="w">   </span><span class="c1">// Agent 的定义（System Prompt、工具集）</span>
+<span class="w">  </span><span class="nx">promptMessages</span><span class="p">,</span><span class="w">    </span><span class="c1">// 初始消息（用户指令）</span>
+<span class="w">  </span><span class="nx">toolUseContext</span><span class="p">,</span><span class="w">    </span><span class="c1">// 继承自父 Agent 的工具调用上下文</span>
+<span class="w">  </span><span class="nx">canUseTool</span><span class="p">,</span><span class="w">        </span><span class="c1">// 权限检查函数</span>
+<span class="w">  </span><span class="nx">isAsync</span><span class="p">,</span><span class="w">           </span><span class="c1">// 是否异步运行</span>
+<span class="w">  </span><span class="nx">model</span><span class="p">,</span><span class="w">             </span><span class="c1">// 模型别名覆盖</span>
+<span class="w">  </span><span class="nx">availableTools</span><span class="p">,</span><span class="w">    </span><span class="c1">// 子 Agent 可用工具池</span>
+<span class="w">  </span><span class="nx">worktreePath</span><span class="p">,</span><span class="w">      </span><span class="c1">// worktree 隔离路径</span>
+<span class="w">  </span><span class="nx">description</span><span class="p">,</span><span class="w">       </span><span class="c1">// 任务描述（用于通知）</span>
+<span class="w">  </span><span class="c1">// ... 其他参数</span>
+<span class="p">})</span><span class="o">:</span><span class="w"> </span><span class="nx">AsyncGenerator</span><span class="o">&lt;</span><span class="nx">Message</span><span class="p">,</span><span class="w"> </span><span class="ow">void</span><span class="o">&gt;</span>
+</code></pre></div>
 
-<p>| 状态 | 含义 |
-|---|---|
-| <code>completed</code> | 同步执行完毕，包含完整结果 |
-| <code>async_launched</code> | 已异步启动，返回 agentId 和 outputFile 路径 |
-| <code>teammate_spawned</code> | 以 tmux 模式生成了一个并行 Teammate |
-| <code>remote_launched</code> | 在远端 CCR 会话中启动（仅内部版本） |</p>
-
-<p>---</p>
-
-<h2>6.2 Agent 的生命周期：runAgent</h2>
-
-<code>src/tools/AgentTool/runAgent.ts</code> 是执行 Agent 核心逻辑的生成器函数，其签名揭示了 Agent 运行时所需的全部上下文（<code>runAgent.ts:248-329</code>）：
-
-<pre><code class="language-typescript">export async function* runAgent({
-  agentDefinition,   // Agent 的定义（System Prompt、工具集）
-  promptMessages,    // 初始消息（用户指令）
-  toolUseContext,    // 继承自父 Agent 的工具调用上下文
-  canUseTool,        // 权限检查函数
-  isAsync,           // 是否异步运行
-  model,             // 模型别名覆盖
-  availableTools,    // 子 Agent 可用工具池
-  worktreePath,      // worktree 隔离路径
-  description,       // 任务描述（用于通知）
-  // ... 其他参数
-}): AsyncGenerator<Message, void></code></pre>
-
-<code>runAgent</code> 是一个<strong>异步生成器</strong>，逐条 yield Message，让调用方可以实时处理流式输出。这是整个流式渲染管道的基础。
-
-<h3>模型解析</h3>
-
+<p><code>runAgent</code> 是一个<strong>异步生成器</strong>，逐条 yield Message，让调用方可以实时处理流式输出。这是整个流式渲染管道的基础。</p>
+<h3 id="_2">模型解析</h3>
 <p>子 Agent 的模型通过三层优先级解析（<code>runAgent.ts:340-345</code>）：</p>
+<div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">resolvedAgentModel</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">getAgentModel</span><span class="p">(</span>
+<span class="w">  </span><span class="nx">agentDefinition</span><span class="p">.</span><span class="nx">model</span><span class="p">,</span><span class="w">          </span><span class="c1">// Agent 定义中的默认模型</span>
+<span class="w">  </span><span class="nx">toolUseContext</span><span class="p">.</span><span class="nx">options</span><span class="p">.</span><span class="nx">mainLoopModel</span><span class="p">,</span><span class="w"> </span><span class="c1">// 父 Agent 使用的模型</span>
+<span class="w">  </span><span class="nx">model</span><span class="p">,</span><span class="w">                          </span><span class="c1">// 调用时显式传入的覆盖</span>
+<span class="w">  </span><span class="nx">permissionMode</span><span class="p">,</span><span class="w">                 </span><span class="c1">// 权限模式（影响某些模型选择）</span>
+<span class="p">)</span>
+</code></pre></div>
 
-<pre><code class="language-typescript">const resolvedAgentModel = getAgentModel(
-  agentDefinition.model,          // Agent 定义中的默认模型
-  toolUseContext.options.mainLoopModel, // 父 Agent 使用的模型
-  model,                          // 调用时显式传入的覆盖
-  permissionMode,                 // 权限模式（影响某些模型选择）
-)</code></pre>
-
-<p>优先级从低到高：Agent 定义 < 父模型继承 < 显式覆盖。</p>
-
-<h3>MCP 服务器初始化</h3>
-
+<p>优先级从低到高：Agent 定义 &lt; 父模型继承 &lt; 显式覆盖。</p>
+<h3 id="mcp">MCP 服务器初始化</h3>
 <p>子 Agent 支持在其 YAML frontmatter 中声明专属 MCP 服务器（<code>runAgent.ts:95-217</code>）。初始化时分两类处理：
-<ul>
-<li><strong>字符串引用</strong>（如 <code>"github"</code>）：复用父 Agent 已连接的 MCP 客户端（缓存共享）</li>
-<li><strong>内联定义</strong>（<code>{ serverName: config }</code>）：独立创建，Agent 结束时清理</li>
-</ul></p>
-
-<p>---</p>
-
-<h2>6.3 同步 vs 异步执行路径</h2>
-
+- <strong>字符串引用</strong>（如 <code>"github"</code>）：复用父 Agent 已连接的 MCP 客户端（缓存共享）
+- <strong>内联定义</strong>（<code>{ serverName: config }</code>）：独立创建，Agent 结束时清理</p>
+<hr />
+<h2 id="63-vs">6.3 同步 vs 异步执行路径</h2>
 <p>AgentTool 的 <code>call()</code> 方法中，Agent 是否异步运行由多个因素共同决定（<code>AgentTool.tsx:567</code>）：</p>
+<div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">shouldRunAsync</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span>
+<span class="w">  </span><span class="nx">run_in_background</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="o">||</span>
+<span class="w">  </span><span class="nx">selectedAgent</span><span class="p">.</span><span class="nx">background</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="c1">// Agent 定义中 background: true</span>
+<span class="w">  </span><span class="nx">isCoordinator</span><span class="w"> </span><span class="o">||</span><span class="w">                     </span><span class="c1">// 协调者模式下强制异步</span>
+<span class="w">  </span><span class="nx">forceAsync</span><span class="w"> </span><span class="o">||</span><span class="w">                        </span><span class="c1">// fork 实验门控</span>
+<span class="w">  </span><span class="nx">assistantForceAsync</span><span class="w"> </span><span class="o">||</span><span class="w">               </span><span class="c1">// KAIROS/Assistant 模式</span>
+<span class="w">  </span><span class="p">(</span><span class="nx">proactiveModule</span><span class="o">?</span><span class="p">.</span><span class="nx">isProactiveActive</span><span class="p">()</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="kc">false</span><span class="p">)</span>
+<span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">!</span><span class="nx">isBackgroundTasksDisabled</span><span class="p">;</span>
+</code></pre></div>
 
-<pre><code class="language-typescript">const shouldRunAsync = (
-  run_in_background === true ||
-  selectedAgent.background === true || // Agent 定义中 background: true
-  isCoordinator ||                     // 协调者模式下强制异步
-  forceAsync ||                        // fork 实验门控
-  assistantForceAsync ||               // KAIROS/Assistant 模式
-  (proactiveModule?.isProactiveActive() ?? false)
-) && !isBackgroundTasksDisabled;</code></pre>
-
-<strong>同步路径</strong>：父 Agent 阻塞等待子 Agent 完成，适合需要子任务结果才能继续的场景。
-
-<strong>异步路径</strong>：子 Agent 在独立 fiber 中运行，通过 <code><task-notification></code> XML 消息回传结果，父 Agent 可继续处理其他工作。核心注册调用（<code>AgentTool.tsx:688-698</code>）：
-
-<pre><code class="language-typescript">const agentBackgroundTask = registerAsyncAgent({
-  agentId: asyncAgentId,
-  description,
-  prompt,
-  selectedAgent,
-  setAppState: rootSetAppState,
-  // 不链接父 AbortController —— 按 ESC 不会杀掉后台 Agent
-  toolUseId: toolUseContext.toolUseId
-});</code></pre>
+<p><strong>同步路径</strong>：父 Agent 阻塞等待子 Agent 完成，适合需要子任务结果才能继续的场景。</p>
+<p><strong>异步路径</strong>：子 Agent 在独立 fiber 中运行，通过 <code>&lt;task-notification&gt;</code> XML 消息回传结果，父 Agent 可继续处理其他工作。核心注册调用（<code>AgentTool.tsx:688-698</code>）：</p>
+<div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">agentBackgroundTask</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">registerAsyncAgent</span><span class="p">({</span>
+<span class="w">  </span><span class="nx">agentId</span><span class="o">:</span><span class="w"> </span><span class="kt">asyncAgentId</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">description</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">prompt</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">selectedAgent</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">setAppState</span><span class="o">:</span><span class="w"> </span><span class="kt">rootSetAppState</span><span class="p">,</span>
+<span class="w">  </span><span class="c1">// 不链接父 AbortController —— 按 ESC 不会杀掉后台 Agent</span>
+<span class="w">  </span><span class="nx">toolUseId</span><span class="o">:</span><span class="w"> </span><span class="kt">toolUseContext.toolUseId</span>
+<span class="p">});</span>
+</code></pre></div>
 
 <p>后台 Agent 的中止需要显式执行 <code>chat:killAgents</code> 命令，这是一个有意的设计决策：防止用户误按 ESC 终止长时间运行的后台任务。</p>
-
-<p>---</p>
-
-<h2>6.4 Worktree 隔离机制</h2>
-
+<hr />
+<h2 id="64-worktree">6.4 Worktree 隔离机制</h2>
 <p>当 <code>isolation: 'worktree'</code> 时，Agent 会在一个独立的 Git worktree 中工作，与主工作区完全隔离（<code>AgentTool.tsx:583-593</code>）：</p>
-
-<pre><code class="language-typescript">if (effectiveIsolation === 'worktree') {
-  const slug = <code>agent-${earlyAgentId.slice(0, 8)}</code>;
-  worktreeInfo = await createAgentWorktree(slug);
-}</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">effectiveIsolation</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;worktree&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">slug</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sb">`agent-</span><span class="si">${</span><span class="nx">earlyAgentId</span><span class="p">.</span><span class="nx">slice</span><span class="p">(</span><span class="mf">0</span><span class="p">,</span><span class="w"> </span><span class="mf">8</span><span class="p">)</span><span class="si">}</span><span class="sb">`</span><span class="p">;</span>
+<span class="w">  </span><span class="nx">worktreeInfo</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">createAgentWorktree</span><span class="p">(</span><span class="nx">slug</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p>Agent 执行完毕后，根据是否有未提交变更决定是否保留 worktree（<code>AgentTool.tsx:644-685</code>）：</p>
-
-<pre><code class="language-mermaid">flowchart TD
-    A[Agent 完成] --> B{hookBased?}
-    B -->|是| C[保留 worktree]
-    B -->|否| D{有未提交变更?}
-    D -->|是| C
-    D -->|否| E[删除 worktree\n清理元数据]</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="n">flowchart</span><span class="w"> </span><span class="n">TD</span>
+<span class="w">    </span><span class="n">A</span><span class="p">[</span><span class="n">Agent</span><span class="w"> </span><span class="err">完成</span><span class="p">]</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">B</span><span class="p">{</span><span class="n">hookBased</span><span class="o">?</span><span class="p">}</span>
+<span class="w">    </span><span class="n">B</span><span class="w"> </span><span class="o">--&gt;|</span><span class="err">是</span><span class="o">|</span><span class="w"> </span><span class="n">C</span><span class="p">[</span><span class="err">保留</span><span class="w"> </span><span class="n">worktree</span><span class="p">]</span>
+<span class="w">    </span><span class="n">B</span><span class="w"> </span><span class="o">--&gt;|</span><span class="err">否</span><span class="o">|</span><span class="w"> </span><span class="n">D</span><span class="p">{</span><span class="err">有未提交变更</span><span class="o">?</span><span class="p">}</span>
+<span class="w">    </span><span class="n">D</span><span class="w"> </span><span class="o">--&gt;|</span><span class="err">是</span><span class="o">|</span><span class="w"> </span><span class="n">C</span>
+<span class="w">    </span><span class="n">D</span><span class="w"> </span><span class="o">--&gt;|</span><span class="err">否</span><span class="o">|</span><span class="w"> </span><span class="n">E</span><span class="p">[</span><span class="err">删除</span><span class="w"> </span><span class="n">worktree</span><span class="err">\</span><span class="n">n清理元数据</span><span class="p">]</span>
+</code></pre></div>
 
 <p>Fork 路径（实验性功能）在 worktree 模式下还会向子 Agent 注入一条特殊通知，告知它当前工作目录已切换，需要重新读取可能已过期的文件。</p>
-
-<p>---</p>
-
-<h2>6.5 Fork 子 Agent 实验</h2>
-
-<code>src/tools/AgentTool/forkSubagent.ts</code> 实现了一个实验性功能：当 <code>subagent_type</code> 未指定且 <code>FORK_SUBAGENT</code> 特性门控开启时，子 Agent 会<strong>继承父 Agent 的完整对话上下文和 System Prompt</strong>，而不是从头开始（<code>forkSubagent.ts:60-71</code>）：
-
-<pre><code class="language-typescript">export const FORK_AGENT = {
-  agentType: FORK_SUBAGENT_TYPE,
-  tools: ['*'],          // 继承父工具集
-  maxTurns: 200,
-  model: 'inherit',      // 继承父模型
-  permissionMode: 'bubble', // 权限提示冒泡到父终端
-  source: 'built-in',
-  getSystemPrompt: () => '',
-} satisfies BuiltInAgentDefinition</code></pre>
+<hr />
+<h2 id="65-fork-agent">6.5 Fork 子 Agent 实验</h2>
+<p><code>src/tools/AgentTool/forkSubagent.ts</code> 实现了一个实验性功能：当 <code>subagent_type</code> 未指定且 <code>FORK_SUBAGENT</code> 特性门控开启时，子 Agent 会<strong>继承父 Agent 的完整对话上下文和 System Prompt</strong>，而不是从头开始（<code>forkSubagent.ts:60-71</code>）：</p>
+<div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">FORK_AGENT</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">agentType</span><span class="o">:</span><span class="w"> </span><span class="kt">FORK_SUBAGENT_TYPE</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">tools</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="s1">&#39;*&#39;</span><span class="p">],</span><span class="w">          </span><span class="c1">// 继承父工具集</span>
+<span class="w">  </span><span class="nx">maxTurns</span><span class="o">:</span><span class="w"> </span><span class="kt">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">model</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;inherit&#39;</span><span class="p">,</span><span class="w">      </span><span class="c1">// 继承父模型</span>
+<span class="w">  </span><span class="nx">permissionMode</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;bubble&#39;</span><span class="p">,</span><span class="w"> </span><span class="c1">// 权限提示冒泡到父终端</span>
+<span class="w">  </span><span class="nx">source</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;built-in&#39;</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">getSystemPrompt</span><span class="o">:</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">,</span>
+<span class="p">}</span><span class="w"> </span><span class="nx">satisfies</span><span class="w"> </span><span class="nx">BuiltInAgentDefinition</span>
+</code></pre></div>
 
 <p>Fork 的设计目标是<strong>提示缓存共享</strong>：所有 fork 子 Agent 具有字节完全相同的 API 请求前缀，因此可以命中同一个 Anthropic 提示缓存条目，大幅降低 token 成本。</p>
-
-<p>防止递归 fork 的保护（<code>forkSubagent.ts:78-88</code>）通过检测消息历史中的 <code><fork-boilerplate></code> 标签来实现。</p>
-
-<p>---</p>
-
-<h2>6.6 本地 Agent 任务：LocalAgentTask</h2>
-
-<code>src/tasks/LocalAgentTask/LocalAgentTask.tsx</code> 管理后台 Agent 的本地状态，核心数据结构追踪进度（<code>LocalAgentTask.tsx:33-49</code>）：
-
-<pre><code class="language-typescript">export type AgentProgress = {
-  toolUseCount: number;       // 已使用工具次数
-  tokenCount: number;         // 累计 token 消耗
-  lastActivity?: ToolActivity; // 最近一次工具调用
-  recentActivities?: ToolActivity[]; // 最近 5 次活动
-  summary?: string;            // AI 生成的进度摘要
-};</code></pre>
+<p>防止递归 fork 的保护（<code>forkSubagent.ts:78-88</code>）通过检测消息历史中的 <code>&lt;fork-boilerplate&gt;</code> 标签来实现。</p>
+<hr />
+<h2 id="66-agent-localagenttask">6.6 本地 Agent 任务：LocalAgentTask</h2>
+<p><code>src/tasks/LocalAgentTask/LocalAgentTask.tsx</code> 管理后台 Agent 的本地状态，核心数据结构追踪进度（<code>LocalAgentTask.tsx:33-49</code>）：</p>
+<div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">AgentProgress</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">toolUseCount</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span><span class="w">       </span><span class="c1">// 已使用工具次数</span>
+<span class="w">  </span><span class="nx">tokenCount</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span><span class="w">         </span><span class="c1">// 累计 token 消耗</span>
+<span class="w">  </span><span class="nx">lastActivity?</span><span class="o">:</span><span class="w"> </span><span class="kt">ToolActivity</span><span class="p">;</span><span class="w"> </span><span class="c1">// 最近一次工具调用</span>
+<span class="w">  </span><span class="nx">recentActivities?</span><span class="o">:</span><span class="w"> </span><span class="kt">ToolActivity</span><span class="p">[];</span><span class="w"> </span><span class="c1">// 最近 5 次活动</span>
+<span class="w">  </span><span class="nx">summary?</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span><span class="w">            </span><span class="c1">// AI 生成的进度摘要</span>
+<span class="p">};</span>
+</code></pre></div>
 
 <p>Token 计数有细节需要注意：<code>input_tokens</code> 在 API 中是<strong>累积值</strong>（包含所有历史 token），所以取最新值而非求和；<code>output_tokens</code> 是<strong>每轮新增值</strong>，需要累加（<code>LocalAgentTask.tsx:74</code>）：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// input_tokens 是累积值，取最新</span>
+<span class="nx">tracker</span><span class="p">.</span><span class="nx">latestInputTokens</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">usage</span><span class="p">.</span><span class="nx">input_tokens</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">cache_creation</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">cache_read</span><span class="p">;</span>
+<span class="c1">// output_tokens 是每轮值，累加</span>
+<span class="nx">tracker</span><span class="p">.</span><span class="nx">cumulativeOutputTokens</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="nx">usage</span><span class="p">.</span><span class="nx">output_tokens</span><span class="p">;</span>
+</code></pre></div>
 
-<pre><code class="language-typescript">// input_tokens 是累积值，取最新
-tracker.latestInputTokens = usage.input_tokens + cache_creation + cache_read;
-// output_tokens 是每轮值，累加
-tracker.cumulativeOutputTokens += usage.output_tokens;</code></pre>
-
-<p>---</p>
-
-<h2>6.7 远程 Agent 任务：RemoteAgentTask</h2>
-
-<code>src/tasks/RemoteAgentTask/RemoteAgentTask.tsx</code> 处理在远端云环境（CCR）中运行的 Agent，支持多种任务类型（<code>RemoteAgentTask.tsx:60-61</code>）：
-
-<pre><code class="language-typescript">const REMOTE_TASK_TYPES = [
-  'remote-agent',   // 普通远程 Agent
-  'ultraplan',      // 长时间规划任务
-  'ultrareview',    // 代码审查
-  'autofix-pr',     // PR 自动修复
-  'background-pr',  // 后台 PR 处理
-] as const</code></pre>
+<hr />
+<h2 id="67-agent-remoteagenttask">6.7 远程 Agent 任务：RemoteAgentTask</h2>
+<p><code>src/tasks/RemoteAgentTask/RemoteAgentTask.tsx</code> 处理在远端云环境（CCR）中运行的 Agent，支持多种任务类型（<code>RemoteAgentTask.tsx:60-61</code>）：</p>
+<div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">REMOTE_TASK_TYPES</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="s1">&#39;remote-agent&#39;</span><span class="p">,</span><span class="w">   </span><span class="c1">// 普通远程 Agent</span>
+<span class="w">  </span><span class="s1">&#39;ultraplan&#39;</span><span class="p">,</span><span class="w">      </span><span class="c1">// 长时间规划任务</span>
+<span class="w">  </span><span class="s1">&#39;ultrareview&#39;</span><span class="p">,</span><span class="w">    </span><span class="c1">// 代码审查</span>
+<span class="w">  </span><span class="s1">&#39;autofix-pr&#39;</span><span class="p">,</span><span class="w">     </span><span class="c1">// PR 自动修复</span>
+<span class="w">  </span><span class="s1">&#39;background-pr&#39;</span><span class="p">,</span><span class="w">  </span><span class="c1">// 后台 PR 处理</span>
+<span class="p">]</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="kd">const</span>
+</code></pre></div>
 
 <p>远程任务通过 WebSocket 长轮询获取状态更新，本地维护一份 <code>log: SDKMessage[]</code> 记录所有消息事件。</p>
-
-<p>---</p>
-
-<h2>6.8 协调者模式（Coordinator Mode）</h2>
-
+<hr />
+<h2 id="68-coordinator-mode">6.8 协调者模式（Coordinator Mode）</h2>
 <p>协调者模式通过环境变量 <code>CLAUDE_CODE_COORDINATOR_MODE=1</code> 开启，核心逻辑在 <code>src/coordinator/coordinatorMode.ts</code>。</p>
-
-<pre><code class="language-typescript">// src/coordinator/coordinatorMode.ts:36-41
-export function isCoordinatorMode(): boolean {
-  if (feature('COORDINATOR_MODE')) {
-    return isEnvTruthy(process.env.CLAUDE_CODE_COORDINATOR_MODE)
-  }
-  return false
-}</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/coordinator/coordinatorMode.ts:36-41</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">isCoordinatorMode</span><span class="p">()</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">feature</span><span class="p">(</span><span class="s1">&#39;COORDINATOR_MODE&#39;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">isEnvTruthy</span><span class="p">(</span><span class="nx">process</span><span class="p">.</span><span class="nx">env</span><span class="p">.</span><span class="nx">CLAUDE_CODE_COORDINATOR_MODE</span><span class="p">)</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="kc">false</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p>协调者有专属 System Prompt（<code>coordinatorMode.ts:116-127</code>），其角色定义明确：</p>
-
-<p>> 你是 Claude Code，一个跨多个 worker 协调软件工程任务的 AI 助手。你的工作是：帮助用户达成目标、指导 worker 研究/实现/验证代码变更、综合结果与用户沟通。</p>
-
+<blockquote>
+<p>你是 Claude Code，一个跨多个 worker 协调软件工程任务的 AI 助手。你的工作是：帮助用户达成目标、指导 worker 研究/实现/验证代码变更、综合结果与用户沟通。</p>
+</blockquote>
 <p>协调者独有的工具集（<code>coordinatorMode.ts:29-34</code>）：</p>
+<div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">INTERNAL_WORKER_TOOLS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nb">Set</span><span class="p">([</span>
+<span class="w">  </span><span class="nx">TEAM_CREATE_TOOL_NAME</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">TEAM_DELETE_TOOL_NAME</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">SEND_MESSAGE_TOOL_NAME</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">SYNTHETIC_OUTPUT_TOOL_NAME</span><span class="p">,</span>
+<span class="p">])</span>
+</code></pre></div>
 
-<pre><code class="language-typescript">const INTERNAL_WORKER_TOOLS = new Set([
-  TEAM_CREATE_TOOL_NAME,
-  TEAM_DELETE_TOOL_NAME,
-  SEND_MESSAGE_TOOL_NAME,
-  SYNTHETIC_OUTPUT_TOOL_NAME,
-])</code></pre>
+<p><strong>Worker 通知格式</strong>：Worker 完成后通过 <code>&lt;task-notification&gt;</code> XML 消息回传（协调者 System Prompt 中有完整示例，<code>coordinatorMode.ts:148-161</code>）：</p>
+<div class="codehilite"><pre><span></span><code><span class="nt">&lt;task-notification&gt;</span>
+<span class="w">  </span><span class="nt">&lt;task-id&gt;</span>{agentId}<span class="nt">&lt;/task-id&gt;</span>
+<span class="w">  </span><span class="nt">&lt;status&gt;</span>completed|failed|killed<span class="nt">&lt;/status&gt;</span>
+<span class="w">  </span><span class="nt">&lt;summary&gt;</span>{人类可读摘要}<span class="nt">&lt;/summary&gt;</span>
+<span class="w">  </span><span class="nt">&lt;result&gt;</span>{Agent<span class="w"> </span>最终文本输出}<span class="nt">&lt;/result&gt;</span>
+<span class="w">  </span><span class="nt">&lt;usage&gt;</span>
+<span class="w">    </span><span class="nt">&lt;total_tokens&gt;</span>N<span class="nt">&lt;/total_tokens&gt;</span>
+<span class="w">    </span><span class="nt">&lt;tool_uses&gt;</span>N<span class="nt">&lt;/tool_uses&gt;</span>
+<span class="w">    </span><span class="nt">&lt;duration_ms&gt;</span>N<span class="nt">&lt;/duration_ms&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/usage&gt;</span>
+<span class="nt">&lt;/task-notification&gt;</span>
+</code></pre></div>
 
-<strong>Worker 通知格式</strong>：Worker 完成后通过 <code><task-notification></code> XML 消息回传（协调者 System Prompt 中有完整示例，<code>coordinatorMode.ts:148-161</code>）：
-
-<pre><code class="language-xml"><task-notification>
-  <task-id>{agentId}</task-id>
-  <status>completed|failed|killed</status>
-  <summary>{人类可读摘要}</summary>
-  <result>{Agent 最终文本输出}</result>
-  <usage>
-    <total_tokens>N</total_tokens>
-    <tool_uses>N</tool_uses>
-    <duration_ms>N</duration_ms>
-  </usage>
-</task-notification></code></pre>
-
-<p>---</p>
-
-<h2>6.9 多智能体通信：SendMessage 工具</h2>
-
-<code>src/tools/SendMessageTool/SendMessageTool.ts</code> 实现了 Agent 间的消息传递。它支持三类目标（通过 <code>to</code> 字段路由）：
+<hr />
+<h2 id="69-sendmessage">6.9 多智能体通信：SendMessage 工具</h2>
+<p><code>src/tools/SendMessageTool/SendMessageTool.ts</code> 实现了 Agent 间的消息传递。它支持三类目标（通过 <code>to</code> 字段路由）：
 1. <strong>agentId</strong>：直接路由到 LocalAgentTask
 2. <strong>命名 Agent</strong>（通过注册表）：<code>name → agentId</code> 映射在 <code>AppState.agentNameRegistry</code> 中维护
-3. <strong>Teammate</strong>：通过 mailbox 文件系统机制（tmux 进程间通信）
-
+3. <strong>Teammate</strong>：通过 mailbox 文件系统机制（tmux 进程间通信）</p>
 <p>SendMessage 还支持结构化消息类型（<code>SendMessageTool.ts:46-62</code>），包括 <code>shutdown_request</code>、<code>shutdown_response</code>、<code>plan_approval_response</code> 等协议消息，用于 Agent 协商生命周期管理。</p>
-
-<p>---</p>
-
-<h2>6.10 团队管理：TeamCreate / TeamDelete</h2>
-
-<code>src/tools/TeamCreateTool/TeamCreateTool.ts</code> 实现了 Agent 团队的创建，输入 Schema（<code>TeamCreateTool.ts:37-49</code>）：
-
-<pre><code class="language-typescript">z.strictObject({
-  team_name: z.string(),        // 团队名称
-  description: z.string().optional(),  // 团队用途描述
-  agent_type: z.string().optional(),   // 团队 Lead 的角色类型
-})</code></pre>
+<hr />
+<h2 id="610-teamcreate-teamdelete">6.10 团队管理：TeamCreate / TeamDelete</h2>
+<p><code>src/tools/TeamCreateTool/TeamCreateTool.ts</code> 实现了 Agent 团队的创建，输入 Schema（<code>TeamCreateTool.ts:37-49</code>）：</p>
+<div class="codehilite"><pre><span></span><code><span class="nx">z</span><span class="p">.</span><span class="nx">strictObject</span><span class="p">({</span>
+<span class="w">  </span><span class="nx">team_name</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">(),</span><span class="w">        </span><span class="c1">// 团队名称</span>
+<span class="w">  </span><span class="nx">description</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">().</span><span class="nx">optional</span><span class="p">(),</span><span class="w">  </span><span class="c1">// 团队用途描述</span>
+<span class="w">  </span><span class="nx">agent_type</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">().</span><span class="nx">optional</span><span class="p">(),</span><span class="w">   </span><span class="c1">// 团队 Lead 的角色类型</span>
+<span class="p">})</span>
+</code></pre></div>
 
 <p>团队状态通过 JSON 文件（TeamFile）持久化，支持多进程间的协调。输出包含 <code>team_file_path</code> 和 <code>lead_agent_id</code>，是后续 Teammate 注册的基础。</p>
-
-<p>---</p>
-
-<h2>6.11 内置 Agent 类型</h2>
-
-<code>src/tools/AgentTool/builtInAgents.ts</code> 定义了内置 Agent 的注册逻辑。在普通模式下，内置 Agent 包括：
-
+<hr />
+<h2 id="611-agent">6.11 内置 Agent 类型</h2>
+<p><code>src/tools/AgentTool/builtInAgents.ts</code> 定义了内置 Agent 的注册逻辑。在普通模式下，内置 Agent 包括：</p>
 <ul>
 <li><strong>general-purpose</strong>：通用 Agent，无特殊限制</li>
 <li><strong>statusline-setup</strong>：状态栏初始化专用</li>
@@ -386,65 +408,65 @@ export function isCoordinatorMode(): boolean {
 <li><strong>code-guide</strong>（非 SDK 模式）：编码向导</li>
 <li><strong>verification</strong>：代码验证</li>
 </ul>
-
 <p>在协调者模式下，内置 Agent 替换为 <code>worker</code>（通过 <code>getCoordinatorAgents()</code> 加载），专门用于接收和执行协调者分发的任务。</p>
+<hr />
+<h2 id="612">6.12 多智能体架构全景</h2>
+<div class="codehilite"><pre><span></span><code><span class="nx">graph</span><span class="w"> </span><span class="nx">TB</span>
+<span class="w">    </span><span class="nx">subgraph</span><span class="w"> </span><span class="nx">用户会话</span>
+<span class="w">        </span><span class="nx">REPL</span><span class="p">[</span><span class="nx">REPL</span><span class="w"> </span><span class="nx">主循环</span><span class="p">]</span>
+<span class="w">        </span><span class="nx">Coord</span><span class="p">[</span><span class="nx">协调者</span><span class="w"> </span><span class="nx">Agent</span><span class="err">\</span><span class="nx">nCLAUDE_CODE_COORDINATOR_MODE</span><span class="p">]</span>
+<span class="w">    </span><span class="nx">end</span>
 
-<p>---</p>
+<span class="w">    </span><span class="nx">subgraph</span><span class="w"> </span><span class="nx">子</span><span class="w"> </span><span class="nx">Agent</span><span class="w"> </span><span class="nx">层</span>
+<span class="w">        </span><span class="nx">LA1</span><span class="p">[</span><span class="nx">LocalAgentTask</span><span class="err">\</span><span class="nx">nasync_launched</span><span class="p">]</span>
+<span class="w">        </span><span class="nx">LA2</span><span class="p">[</span><span class="nx">LocalAgentTask</span><span class="err">\</span><span class="nx">nasync_launched</span><span class="p">]</span>
+<span class="w">        </span><span class="nx">TM1</span><span class="p">[</span><span class="nx">Teammate</span><span class="err">\</span><span class="nx">ntmux</span><span class="w"> </span><span class="nx">进程</span><span class="p">]</span>
+<span class="w">    </span><span class="nx">end</span>
 
-<h2>6.12 多智能体架构全景</h2>
+<span class="w">    </span><span class="nx">subgraph</span><span class="w"> </span><span class="nx">隔离层</span>
+<span class="w">        </span><span class="nx">WT</span><span class="p">[</span><span class="nx">Git</span><span class="w"> </span><span class="nx">Worktree</span><span class="err">\</span><span class="nx">nisolation</span><span class="p">:</span><span class="w"> </span><span class="nx">worktree</span><span class="p">]</span>
+<span class="w">        </span><span class="nx">RA</span><span class="p">[</span><span class="nx">RemoteAgentTask</span><span class="err">\</span><span class="nx">nisolation</span><span class="p">:</span><span class="w"> </span><span class="nx">remote</span><span class="p">]</span>
+<span class="w">    </span><span class="nx">end</span>
 
-<pre><code class="language-mermaid">graph TB
-    subgraph 用户会话
-        REPL[REPL 主循环]
-        Coord[协调者 Agent\nCLAUDE_CODE_COORDINATOR_MODE]
-    end
+<span class="w">    </span><span class="nx">REPL</span><span class="w"> </span><span class="o">--</span><span class="p">&gt;</span><span class="o">|</span><span class="nx">AgentTool</span><span class="err">\</span><span class="nx">nrun_in_background</span><span class="p">=</span><span class="kc">false</span><span class="o">|</span><span class="w"> </span><span class="nx">SyncAgent</span><span class="p">[</span><span class="nx">同步子</span><span class="w"> </span><span class="nx">Agent</span><span class="p">]</span>
+<span class="w">    </span><span class="nx">REPL</span><span class="w"> </span><span class="o">--</span><span class="p">&gt;</span><span class="o">|</span><span class="nx">AgentTool</span><span class="err">\</span><span class="nx">nrun_in_background</span><span class="p">=</span><span class="kc">true</span><span class="o">|</span><span class="w"> </span><span class="nx">LA1</span>
+<span class="w">    </span><span class="nx">REPL</span><span class="w"> </span><span class="o">--</span><span class="p">&gt;</span><span class="o">|</span><span class="nx">AgentTool</span><span class="err">\</span><span class="nx">nrun_in_background</span><span class="p">=</span><span class="kc">true</span><span class="o">|</span><span class="w"> </span><span class="nx">LA2</span>
+<span class="w">    </span><span class="nx">REPL</span><span class="w"> </span><span class="o">--</span><span class="p">&gt;</span><span class="o">|</span><span class="nx">AgentTool</span><span class="err">\</span><span class="nx">nname</span><span class="o">+</span><span class="nx">team_name</span><span class="o">|</span><span class="w"> </span><span class="nx">TM1</span>
 
-<p>subgraph 子 Agent 层
-        LA1[LocalAgentTask\nasync_launched]
-        LA2[LocalAgentTask\nasync_launched]
-        TM1[Teammate\ntmux 进程]
-    end</p>
+<span class="w">    </span><span class="nx">Coord</span><span class="w"> </span><span class="o">--</span><span class="p">&gt;</span><span class="o">|</span><span class="nx">AgentTool</span><span class="err">\</span><span class="nx">nsubagent_type</span><span class="p">=</span><span class="nx">worker</span><span class="o">|</span><span class="w"> </span><span class="nx">LA1</span>
+<span class="w">    </span><span class="nx">Coord</span><span class="w"> </span><span class="o">--</span><span class="p">&gt;</span><span class="o">|</span><span class="nx">AgentTool</span><span class="err">\</span><span class="nx">nsubagent_type</span><span class="p">=</span><span class="nx">worker</span><span class="o">|</span><span class="w"> </span><span class="nx">LA2</span>
+<span class="w">    </span><span class="nx">Coord</span><span class="w"> </span><span class="o">--</span><span class="p">&gt;</span><span class="o">|</span><span class="nx">SendMessage</span><span class="err">\</span><span class="nx">nto</span><span class="p">=</span><span class="nx">agentId</span><span class="o">|</span><span class="w"> </span><span class="nx">LA1</span>
 
-<p>subgraph 隔离层
-        WT[Git Worktree\nisolation: worktree]
-        RA[RemoteAgentTask\nisolation: remote]
-    end</p>
+<span class="w">    </span><span class="nx">LA1</span><span class="w"> </span><span class="o">--</span><span class="p">&gt;</span><span class="o">|</span><span class="nx">isolation</span><span class="p">:</span><span class="w"> </span><span class="nx">worktree</span><span class="o">|</span><span class="w"> </span><span class="nx">WT</span>
+<span class="w">    </span><span class="nx">LA1</span><span class="w"> </span><span class="o">-</span><span class="p">.</span><span class="o">-&gt;|</span><span class="nx">task</span><span class="o">-</span><span class="nx">notification</span><span class="o">|</span><span class="w"> </span><span class="nx">Coord</span>
 
-<p>REPL -->|AgentTool\nrun_in_background=false| SyncAgent[同步子 Agent]
-    REPL -->|AgentTool\nrun_in_background=true| LA1
-    REPL -->|AgentTool\nrun_in_background=true| LA2
-    REPL -->|AgentTool\nname+team_name| TM1</p>
+<span class="w">    </span><span class="nx">LA2</span><span class="w"> </span><span class="o">-</span><span class="p">.</span><span class="o">-&gt;|</span><span class="nx">task</span><span class="o">-</span><span class="nx">notification</span><span class="o">|</span><span class="w"> </span><span class="nx">Coord</span>
 
-<p>Coord -->|AgentTool\nsubagent_type=worker| LA1
-    Coord -->|AgentTool\nsubagent_type=worker| LA2
-    Coord -->|SendMessage\nto=agentId| LA1</p>
+<span class="w">    </span><span class="nx">RA</span><span class="w"> </span><span class="o">-</span><span class="p">.</span><span class="o">-&gt;|</span><span class="nx">WebSocket</span><span class="w"> </span><span class="nx">轮询</span><span class="o">|</span><span class="w"> </span><span class="nx">REPL</span>
 
-<p>LA1 -->|isolation: worktree| WT
-    LA1 -.->|task-notification| Coord</p>
+<span class="w">    </span><span class="nx">style</span><span class="w"> </span><span class="nx">Coord</span><span class="w"> </span><span class="nx">fill</span><span class="p">:</span><span class="err">#</span><span class="nx">f9f</span><span class="p">,</span><span class="nx">stroke</span><span class="p">:</span><span class="err">#</span><span class="mi">333</span>
+<span class="w">    </span><span class="nx">style</span><span class="w"> </span><span class="nx">LA1</span><span class="w"> </span><span class="nx">fill</span><span class="p">:</span><span class="err">#</span><span class="nx">bbf</span><span class="p">,</span><span class="nx">stroke</span><span class="p">:</span><span class="err">#</span><span class="mi">333</span>
+<span class="w">    </span><span class="nx">style</span><span class="w"> </span><span class="nx">LA2</span><span class="w"> </span><span class="nx">fill</span><span class="p">:</span><span class="err">#</span><span class="nx">bbf</span><span class="p">,</span><span class="nx">stroke</span><span class="p">:</span><span class="err">#</span><span class="mi">333</span>
+<span class="w">    </span><span class="nx">style</span><span class="w"> </span><span class="nx">TM1</span><span class="w"> </span><span class="nx">fill</span><span class="p">:</span><span class="err">#</span><span class="nx">bfb</span><span class="p">,</span><span class="nx">stroke</span><span class="p">:</span><span class="err">#</span><span class="mi">333</span>
+</code></pre></div>
 
-<p>LA2 -.->|task-notification| Coord</p>
-
-<p>RA -.->|WebSocket 轮询| REPL</p>
-
-<p>style Coord fill:#f9f,stroke:#333
-    style LA1 fill:#bbf,stroke:#333
-    style LA2 fill:#bbf,stroke:#333
-    style TM1 fill:#bfb,stroke:#333</code></pre></p>
-
-<h3>关键设计决策</h3>
-
-<p>1. <strong>后台 Agent 不继承父 AbortController</strong>：按 ESC 取消主线程不会意外杀死正在运行的后台任务，需要显式 <code>chat:killAgents</code>。</p>
-
-<p>2. <strong>Teammate 不能再生成 Teammate</strong>（<code>AgentTool.tsx:272-274</code>）：团队成员列表是扁平的，不支持嵌套，避免层级混乱。</p>
-
-<p>3. <strong>协调者模式下模型参数被忽略</strong>（<code>AgentTool.tsx:252</code>）：<code>const model = isCoordinatorMode() ? undefined : modelParam;</code>，防止协调者越权控制 worker 的模型选择。</p>
-
-<p>4. <strong>Worktree 清理策略</strong>：Agent 结束后若无未提交变更则自动清理，有变更则保留供人工审查，体现了"安全第一"的设计原则。</p>
-
-<p>---</p>
-
-<h2>小结</h2>
-
+<h3 id="_3">关键设计决策</h3>
+<ol>
+<li>
+<p><strong>后台 Agent 不继承父 AbortController</strong>：按 ESC 取消主线程不会意外杀死正在运行的后台任务，需要显式 <code>chat:killAgents</code>。</p>
+</li>
+<li>
+<p><strong>Teammate 不能再生成 Teammate</strong>（<code>AgentTool.tsx:272-274</code>）：团队成员列表是扁平的，不支持嵌套，避免层级混乱。</p>
+</li>
+<li>
+<p><strong>协调者模式下模型参数被忽略</strong>（<code>AgentTool.tsx:252</code>）：<code>const model = isCoordinatorMode() ? undefined : modelParam;</code>，防止协调者越权控制 worker 的模型选择。</p>
+</li>
+<li>
+<p><strong>Worktree 清理策略</strong>：Agent 结束后若无未提交变更则自动清理，有变更则保留供人工审查，体现了"安全第一"的设计原则。</p>
+</li>
+</ol>
+<hr />
+<h2 id="_4">小结</h2>
 <p>Claude Code 的 Agent 子系统以 <code>AgentTool</code> 为核心，通过 <code>runAgent</code> 生成器实现了流式异步执行，通过 <code>LocalAgentTask</code> 和 <code>RemoteAgentTask</code> 管理本地与远程两类后台任务的生命周期，通过 <code>SendMessage</code>/<code>TeamCreate</code>/<code>TeamDelete</code> 构建了完整的多智能体通信协议。协调者模式提供了一个专用的编排层，让 Claude 可以像真正的工程 PM 一样并行调度多个专项 worker，同时通过 worktree 隔离、权限冒泡、模型继承等机制确保子 Agent 的安全边界。</p>
             </article>
             

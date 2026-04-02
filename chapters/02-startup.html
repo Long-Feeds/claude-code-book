@@ -7,7 +7,11 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.1/github-markdown.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script>hljs.highlightAll();</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.0/mermaid.min.js"></script>
+    <script>
+        hljs.highlightAll();
+        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+    </script>
     <style>
         body {
             margin: 0;
@@ -20,6 +24,9 @@
             color: white;
             padding: 15px 0;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
         }
         .nav-container {
             max-width: 1200px;
@@ -33,9 +40,10 @@
             color: white;
             text-decoration: none;
             font-weight: 500;
+            transition: opacity 0.3s;
         }
         .nav a:hover {
-            text-decoration: underline;
+            opacity: 0.8;
         }
         .container {
             max-width: 1200px;
@@ -51,8 +59,41 @@
         .markdown-body {
             box-sizing: border-box;
             min-width: 200px;
-            max-width: 980px;
+            max-width: 100%;
             margin: 0 auto;
+        }
+        .markdown-body pre {
+            background: #f6f8fa;
+            border-radius: 6px;
+            padding: 16px;
+        }
+        .markdown-body code {
+            background: #f6f8fa;
+            padding: 0.2em 0.4em;
+            border-radius: 3px;
+            font-size: 85%;
+        }
+        .markdown-body pre code {
+            background: transparent;
+            padding: 0;
+        }
+        .markdown-body table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 20px 0;
+        }
+        .markdown-body table th,
+        .markdown-body table td {
+            border: 1px solid #dfe2e5;
+            padding: 8px 13px;
+        }
+        .markdown-body table th {
+            background: #f6f8fa;
+            font-weight: 600;
+        }
+        .mermaid {
+            text-align: center;
+            margin: 30px 0;
         }
         .pagination {
             display: flex;
@@ -80,6 +121,12 @@
         .pagination .next::after {
             content: " →";
         }
+        blockquote {
+            border-left: 4px solid #667eea;
+            padding-left: 20px;
+            color: #6a737d;
+            margin: 20px 0;
+        }
         @media (max-width: 768px) {
             .content {
                 padding: 30px 20px;
@@ -91,229 +138,222 @@
     <div class="nav">
         <div class="nav-container">
             <a href="../index.html">📘 解密 Claude Code</a>
-            <a href="../index.html#toc">目录</a>
+            <a href="../index.html">目录</a>
         </div>
     </div>
     
     <div class="container">
         <div class="content">
             <article class="markdown-body">
-<h1>第二章：启动流程与性能优化</h1>
-
-<p>> Claude Code 的启动过程是一个精心设计的分层初始化序列。从进程创建到第一个用户交互界面出现，代码在每个环节都做了大量优化：并行预取、惰性加载、特性标志的死代码消除。本章深入分析这一过程中的关键决策。</p>
-
-<h2>2.1 启动入口：main.tsx 的顶层副作用</h2>
-
-<code>src/main.tsx</code> 是整个 CLI 的入口文件。文件体量巨大（超过 785KB），承载了从命令解析到 REPL 启动的全部逻辑。
-
+<h1 id="_1">第二章：启动流程与性能优化</h1>
+<blockquote>
+<p>Claude Code 的启动过程是一个精心设计的分层初始化序列。从进程创建到第一个用户交互界面出现，代码在每个环节都做了大量优化：并行预取、惰性加载、特性标志的死代码消除。本章深入分析这一过程中的关键决策。</p>
+</blockquote>
+<h2 id="21-maintsx">2.1 启动入口：main.tsx 的顶层副作用</h2>
+<p><code>src/main.tsx</code> 是整个 CLI 的入口文件。文件体量巨大（超过 785KB），承载了从命令解析到 REPL 启动的全部逻辑。</p>
 <p>最引人注意的是文件<strong>顶部的副作用代码</strong>——在所有 <code>import</code> 语句之间，有三个刻意排列的立即执行调用（<code>src/main.tsx:9-20</code>）：</p>
+<div class="codehilite"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">profileCheckpoint</span><span class="p">,</span><span class="w"> </span><span class="nx">profileReport</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;./utils/startupProfiler.js&#39;</span><span class="p">;</span>
+<span class="nx">profileCheckpoint</span><span class="p">(</span><span class="s1">&#39;main_tsx_entry&#39;</span><span class="p">);</span>
 
-<pre><code class="language-typescript">import { profileCheckpoint, profileReport } from './utils/startupProfiler.js';
-profileCheckpoint('main_tsx_entry');
+<span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">startMdmRawRead</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;./utils/settings/mdm/rawRead.js&#39;</span><span class="p">;</span>
+<span class="nx">startMdmRawRead</span><span class="p">();</span><span class="w">   </span><span class="c1">// 立即启动 MDM 子进程（plutil/reg query）</span>
 
-<p>import { startMdmRawRead } from './utils/settings/mdm/rawRead.js';
-startMdmRawRead();   // 立即启动 MDM 子进程（plutil/reg query）</p>
-
-<p>import { ensureKeychainPrefetchCompleted, startKeychainPrefetch } from './utils/secureStorage/keychainPrefetch.js';
-startKeychainPrefetch(); // 立即启动 macOS Keychain 异步读取</code></pre></p>
+<span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">ensureKeychainPrefetchCompleted</span><span class="p">,</span><span class="w"> </span><span class="nx">startKeychainPrefetch</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;./utils/secureStorage/keychainPrefetch.js&#39;</span><span class="p">;</span>
+<span class="nx">startKeychainPrefetch</span><span class="p">();</span><span class="w"> </span><span class="c1">// 立即启动 macOS Keychain 异步读取</span>
+</code></pre></div>
 
 <p>代码注释解释了这一设计：macOS Keychain 的同步读取在每次启动时耗时约 65ms，通过在模块求值阶段就启动异步预取，使这部分延迟与后续 ~135ms 的模块加载并行进行，从而隐藏在不可避免的导入开销中。</p>
-
 <p>第三个副作用是性能检查点标记，配合 <code>src/utils/startupProfiler.ts</code> 实现启动耗时的采样上报。</p>
-
-<h2>2.2 bun:bundle 特性标志与死代码消除</h2>
-
+<h2 id="22-bunbundle">2.2 bun:bundle 特性标志与死代码消除</h2>
 <p>文件中频繁出现 <code>feature()</code> 调用（<code>src/main.tsx:21</code>）：</p>
+<div class="codehilite"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">feature</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;bun:bundle&#39;</span><span class="p">;</span>
+</code></pre></div>
 
-<pre><code class="language-typescript">import { feature } from 'bun:bundle';</code></pre>
-
-<code>bun:bundle</code> 是 Bun 构建器的专属 API。<code>feature('FLAG_NAME')</code> 在构建阶段被替换为 <code>true</code> 或 <code>false</code> 字面量，随后标准的 JavaScript 压缩器（tree-shaker）可以消除永远不会执行的代码分支。
-
+<p><code>bun:bundle</code> 是 Bun 构建器的专属 API。<code>feature('FLAG_NAME')</code> 在构建阶段被替换为 <code>true</code> 或 <code>false</code> 字面量，随后标准的 JavaScript 压缩器（tree-shaker）可以消除永远不会执行的代码分支。</p>
 <p>这一机制在代码库中被大量使用，主要集中在两类场景：</p>
+<p><strong>场景一：条件模块加载（<code>src/main.tsx:76-81</code>）</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// Dead code elimination: conditional import for COORDINATOR_MODE</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">coordinatorModeModule</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">feature</span><span class="p">(</span><span class="s1">&#39;COORDINATOR_MODE&#39;</span><span class="p">)</span>
+<span class="w">  </span><span class="o">?</span><span class="w"> </span><span class="nx">require</span><span class="p">(</span><span class="s1">&#39;./coordinator/coordinatorMode.js&#39;</span><span class="p">)</span>
+<span class="w">  </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span>
 
-<strong>场景一：条件模块加载（<code>src/main.tsx:76-81</code>）</strong>
+<span class="c1">// Dead code elimination: conditional import for KAIROS (assistant mode)</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">assistantModule</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">feature</span><span class="p">(</span><span class="s1">&#39;KAIROS&#39;</span><span class="p">)</span>
+<span class="w">  </span><span class="o">?</span><span class="w"> </span><span class="nx">require</span><span class="p">(</span><span class="s1">&#39;./assistant/index.js&#39;</span><span class="p">)</span>
+<span class="w">  </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span>
+</code></pre></div>
 
-<pre><code class="language-typescript">// Dead code elimination: conditional import for COORDINATOR_MODE
-const coordinatorModeModule = feature('COORDINATOR_MODE')
-  ? require('./coordinator/coordinatorMode.js')
-  : null;
-
-<p>// Dead code elimination: conditional import for KAIROS (assistant mode)
-const assistantModule = feature('KAIROS')
-  ? require('./assistant/index.js')
-  : null;</code></pre></p>
-
-<code>COORDINATOR_MODE</code> 和 <code>KAIROS</code> 是面向不同用户群体（内部 Ant 员工 vs 外部用户）的功能。当特性标志为 <code>false</code> 时，对应模块的代码不会出现在最终产物中，外部版本的包体积得以保持精简。
-
-<strong>场景二：运行时行为门控（<code>src/setup.ts:95-100</code>）</strong>
-
-<pre><code class="language-typescript">if (feature('UDS_INBOX')) {
-  const m = await import('./utils/udsMessaging.js')
-  await m.startUdsMessaging(...)
-}</code></pre>
+<p><code>COORDINATOR_MODE</code> 和 <code>KAIROS</code> 是面向不同用户群体（内部 Ant 员工 vs 外部用户）的功能。当特性标志为 <code>false</code> 时，对应模块的代码不会出现在最终产物中，外部版本的包体积得以保持精简。</p>
+<p><strong>场景二：运行时行为门控（<code>src/setup.ts:95-100</code>）</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">feature</span><span class="p">(</span><span class="s1">&#39;UDS_INBOX&#39;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">m</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="k">import</span><span class="p">(</span><span class="s1">&#39;./utils/udsMessaging.js&#39;</span><span class="p">)</span>
+<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">m</span><span class="p">.</span><span class="nx">startUdsMessaging</span><span class="p">(...)</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p>这里使用动态 <code>import()</code> 而非顶层 <code>require()</code>，配合特性门控，确保模块只在需要时才被加载。</p>
-
 <p>同样的模式在 <code>src/tools.ts</code> 中被广泛应用于工具注册（<code>src/tools.ts:16-135</code>），几十个工具通过特性标志选择性地加入工具集合。</p>
-
-<h2>2.3 Commander.js CLI 解析架构</h2>
-
+<h2 id="23-commanderjs-cli">2.3 Commander.js CLI 解析架构</h2>
 <p>主命令解析在 <code>run()</code> 函数中完成（<code>src/main.tsx:884</code>）。Commander.js 通过 <code>@commander-js/extra-typings</code> 包引入，提供完整的 TypeScript 类型支持。</p>
+<div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">program</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">CommanderCommand</span><span class="p">()</span>
+<span class="w">  </span><span class="p">.</span><span class="nx">configureHelp</span><span class="p">(</span><span class="nx">createSortedHelpConfig</span><span class="p">())</span>
+<span class="w">  </span><span class="p">.</span><span class="nx">enablePositionalOptions</span><span class="p">();</span>
+</code></pre></div>
 
-<pre><code class="language-typescript">const program = new CommanderCommand()
-  .configureHelp(createSortedHelpConfig())
-  .enablePositionalOptions();</code></pre>
-
-<code>enablePositionalOptions()</code> 的启用使得子命令能够拥有独立的选项命名空间，避免与父命令产生冲突。
-
-<strong>preAction 钩子是关键的初始化时机点</strong>（<code>src/main.tsx:907-935</code>）：
-
-<pre><code class="language-typescript">program.hook('preAction', async thisCommand => {
-  profileCheckpoint('preAction_start');
-  // 等待模块加载阶段启动的异步任务完成
-  await Promise.all([ensureMdmSettingsLoaded(), ensureKeychainPrefetchCompleted()]);
-  await init();   // 核心初始化
-  initSinks();    // 接入日志/遥测管道
-});</code></pre>
+<p><code>enablePositionalOptions()</code> 的启用使得子命令能够拥有独立的选项命名空间，避免与父命令产生冲突。</p>
+<p><strong>preAction 钩子是关键的初始化时机点</strong>（<code>src/main.tsx:907-935</code>）：</p>
+<div class="codehilite"><pre><span></span><code><span class="nx">program</span><span class="p">.</span><span class="nx">hook</span><span class="p">(</span><span class="s1">&#39;preAction&#39;</span><span class="p">,</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="nx">thisCommand</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">profileCheckpoint</span><span class="p">(</span><span class="s1">&#39;preAction_start&#39;</span><span class="p">);</span>
+<span class="w">  </span><span class="c1">// 等待模块加载阶段启动的异步任务完成</span>
+<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nb">Promise</span><span class="p">.</span><span class="nx">all</span><span class="p">([</span><span class="nx">ensureMdmSettingsLoaded</span><span class="p">(),</span><span class="w"> </span><span class="nx">ensureKeychainPrefetchCompleted</span><span class="p">()]);</span>
+<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">init</span><span class="p">();</span><span class="w">   </span><span class="c1">// 核心初始化</span>
+<span class="w">  </span><span class="nx">initSinks</span><span class="p">();</span><span class="w">    </span><span class="c1">// 接入日志/遥测管道</span>
+<span class="p">});</span>
+</code></pre></div>
 
 <p>使用 <code>preAction</code> 钩子而非在 <code>action</code> 回调中初始化的原因是：当用户请求 <code>--help</code> 时，Commander 不会触发 <code>preAction</code>，从而避免不必要的初始化开销。</p>
-
-<h2>2.4 子命令注册模式</h2>
-
+<h2 id="24">2.4 子命令注册模式</h2>
 <p>Claude Code 拥有大量子命令（<code>mcp serve</code>、<code>doctor</code>、<code>auth</code>、<code>plugin</code> 等）。这些命令通过专门的注册函数添加（<code>src/main.tsx:141-143</code>）：</p>
-
-<pre><code class="language-typescript">import { registerMcpAddCommand } from 'src/commands/mcp/addCommand.js';
-import { registerMcpXaaIdpCommand } from 'src/commands/mcp/xaaIdpCommand.js';</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">registerMcpAddCommand</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;src/commands/mcp/addCommand.js&#39;</span><span class="p">;</span>
+<span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">registerMcpXaaIdpCommand</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;src/commands/mcp/xaaIdpCommand.js&#39;</span><span class="p">;</span>
+</code></pre></div>
 
 <p>部分子命令在 <code>main()</code> 函数顶部做了提前处理——在 Commander 解析之前，代码就对 <code>process.argv</code> 进行了扫描和改写。以 <code>ssh</code> 子命令为例（<code>src/main.tsx:706-784</code>），系统会提前提取主机名、工作目录、权限模式等参数，存入模块级变量 <code>_pendingSSH</code>，随后从 <code>argv</code> 中移除这些参数，让主命令正常运行交互式 REPL，再在合适的时机将 SSH 会话信息注入。</p>
-
 <p>这种"提前解析、延迟消费"的模式被用于多个功能：
-<ul>
-<li><code>DIRECT_CONNECT</code>（<code>cc://</code> URL 协议）：<code>src/main.tsx:612-642</code></li>
-<li><code>KAIROS</code>（assistant 子命令）：<code>src/main.tsx:685-700</code></li>
-<li><code>SSH_REMOTE</code>（ssh 子命令）：<code>src/main.tsx:706-770</code></li>
-</ul></p>
-
-<h2>2.5 init() 初始化序列</h2>
-
+- <code>DIRECT_CONNECT</code>（<code>cc://</code> URL 协议）：<code>src/main.tsx:612-642</code>
+- <code>KAIROS</code>（assistant 子命令）：<code>src/main.tsx:685-700</code>
+- <code>SSH_REMOTE</code>（ssh 子命令）：<code>src/main.tsx:706-770</code></p>
+<h2 id="25-init">2.5 init() 初始化序列</h2>
 <p>核心初始化逻辑在 <code>src/entrypoints/init.ts</code> 的 <code>init()</code> 函数中，它被 <code>memoize</code> 包裹确保只执行一次（<code>src/entrypoints/init.ts:57</code>）：</p>
+<div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">init</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">memoize</span><span class="p">(</span><span class="k">async</span><span class="w"> </span><span class="p">()</span><span class="o">:</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="ow">void</span><span class="o">&gt;</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">enableConfigs</span><span class="p">()</span><span class="w">                      </span><span class="c1">// 启用配置系统，验证配置合法性</span>
+<span class="w">  </span><span class="nx">applySafeConfigEnvironmentVariables</span><span class="p">()</span><span class="w"> </span><span class="c1">// 安全地应用部分环境变量（信任对话框前）</span>
+<span class="w">  </span><span class="nx">applyExtraCACertsFromConfig</span><span class="p">()</span><span class="w">        </span><span class="c1">// 应用 TLS CA 证书配置</span>
+<span class="w">  </span><span class="c1">// ...</span>
+<span class="p">})</span>
+</code></pre></div>
 
-<pre><code class="language-typescript">export const init = memoize(async (): Promise<void> => {
-  enableConfigs()                      // 启用配置系统，验证配置合法性
-  applySafeConfigEnvironmentVariables() // 安全地应用部分环境变量（信任对话框前）
-  applyExtraCACertsFromConfig()        // 应用 TLS CA 证书配置
-  // ...
-})</code></pre>
+<p><code>init()</code> 与 <code>setup()</code> 的分工是：<code>init()</code> 负责与会话无关的全局初始化（配置、遥测、证书），而 <code>setup()</code> 处理每次会话的上下文初始化，包括工作目录、Hook 快照、Worktree 创建等。</p>
+<h2 id="26-setup">2.6 setup() 会话初始化</h2>
+<p><code>src/setup.ts</code> 中的 <code>setup()</code> 函数接收会话相关参数（<code>src/setup.ts:56-66</code>）：</p>
+<div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">setup</span><span class="p">(</span>
+<span class="w">  </span><span class="nx">cwd</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">permissionMode</span><span class="o">:</span><span class="w"> </span><span class="kt">PermissionMode</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">allowDangerouslySkipPermissions</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">worktreeEnabled</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="p">,</span>
+<span class="w">  </span><span class="c1">// ...</span>
+<span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="ow">void</span><span class="o">&gt;</span>
+</code></pre></div>
 
-<code>init()</code> 与 <code>setup()</code> 的分工是：<code>init()</code> 负责与会话无关的全局初始化（配置、遥测、证书），而 <code>setup()</code> 处理每次会话的上下文初始化，包括工作目录、Hook 快照、Worktree 创建等。
-
-<h2>2.6 setup() 会话初始化</h2>
-
-<code>src/setup.ts</code> 中的 <code>setup()</code> 函数接收会话相关参数（<code>src/setup.ts:56-66</code>）：
-
-<pre><code class="language-typescript">export async function setup(
-  cwd: string,
-  permissionMode: PermissionMode,
-  allowDangerouslySkipPermissions: boolean,
-  worktreeEnabled: boolean,
-  // ...
-): Promise<void></code></pre>
-
-<code>setup()</code> 执行的关键步骤（按顺序）：
-1. Node.js 版本检查（<code>>= 18</code>）
+<p><code>setup()</code> 执行的关键步骤（按顺序）：
+1. Node.js 版本检查（<code>&gt;= 18</code>）
 2. UDS 消息服务器启动（由 <code>UDS_INBOX</code> 特性门控）
 3. Teammate 快照捕获（多智能体模式）
 4. 终端备份恢复检测（iTerm2 / Terminal.app）
 5. <code>setCwd()</code> 设置工作目录
 6. <code>captureHooksConfigSnapshot()</code> 固定 Hook 配置（防止 Hook 在运行中被篡改）
 7. 文件变更监听器初始化
-8. Worktree 创建（如果 <code>--worktree</code> 被启用）
-
-<h2>2.7 延迟预取：startDeferredPrefetches()</h2>
-
-<code>src/main.tsx:388</code> 定义了 <code>startDeferredPrefetches()</code>，它在 REPL 首次渲染完成<strong>之后</strong>调用，而非阻塞在启动关键路径上：
-
-<pre><code class="language-typescript">export function startDeferredPrefetches(): void {
-  void initUser();
-  void getUserContext();
-  prefetchSystemContextIfSafe();
-  void getRelevantTips();
-  void countFilesRoundedRg(getCwd(), AbortSignal.timeout(3000), []);
-  void initializeAnalyticsGates();
-  void prefetchOfficialMcpUrls();
-  void refreshModelCapabilities();
-  void settingsChangeDetector.initialize();
-}</code></pre>
+8. Worktree 创建（如果 <code>--worktree</code> 被启用）</p>
+<h2 id="27-startdeferredprefetches">2.7 延迟预取：startDeferredPrefetches()</h2>
+<p><code>src/main.tsx:388</code> 定义了 <code>startDeferredPrefetches()</code>，它在 REPL 首次渲染完成<strong>之后</strong>调用，而非阻塞在启动关键路径上：</p>
+<div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">startDeferredPrefetches</span><span class="p">()</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="ow">void</span><span class="w"> </span><span class="nx">initUser</span><span class="p">();</span>
+<span class="w">  </span><span class="ow">void</span><span class="w"> </span><span class="nx">getUserContext</span><span class="p">();</span>
+<span class="w">  </span><span class="nx">prefetchSystemContextIfSafe</span><span class="p">();</span>
+<span class="w">  </span><span class="ow">void</span><span class="w"> </span><span class="nx">getRelevantTips</span><span class="p">();</span>
+<span class="w">  </span><span class="ow">void</span><span class="w"> </span><span class="nx">countFilesRoundedRg</span><span class="p">(</span><span class="nx">getCwd</span><span class="p">(),</span><span class="w"> </span><span class="nx">AbortSignal</span><span class="p">.</span><span class="nx">timeout</span><span class="p">(</span><span class="mf">3000</span><span class="p">),</span><span class="w"> </span><span class="p">[]);</span>
+<span class="w">  </span><span class="ow">void</span><span class="w"> </span><span class="nx">initializeAnalyticsGates</span><span class="p">();</span>
+<span class="w">  </span><span class="ow">void</span><span class="w"> </span><span class="nx">prefetchOfficialMcpUrls</span><span class="p">();</span>
+<span class="w">  </span><span class="ow">void</span><span class="w"> </span><span class="nx">refreshModelCapabilities</span><span class="p">();</span>
+<span class="w">  </span><span class="ow">void</span><span class="w"> </span><span class="nx">settingsChangeDetector</span><span class="p">.</span><span class="nx">initialize</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p>所有调用均使用 <code>void</code> 前缀（即 fire-and-forget），它们与用户首次输入并行执行。注意 <code>prefetchSystemContextIfSafe()</code> 包含安全检查——只有在信任对话框已接受的情况下才会触发 <code>getSystemContext()</code>（后者会调用 git 命令），因为 git 的钩子和配置（<code>core.fsmonitor</code>、<code>diff.external</code>）可能执行任意代码。</p>
-
-<h2>2.8 启动性能监测体系</h2>
-
-<code>src/utils/startupProfiler.ts</code> 实现了一套分层采样的性能监测机制：
-
+<h2 id="28">2.8 启动性能监测体系</h2>
+<p><code>src/utils/startupProfiler.ts</code> 实现了一套分层采样的性能监测机制：</p>
 <ul>
 <li>Ant 内部用户：100% 采样上报到 Statsig</li>
 <li>外部用户：0.5% 概率采样（<code>STATSIG_SAMPLE_RATE = 0.005</code>）</li>
 <li>本地调试：<code>CLAUDE_CODE_PROFILE_STARTUP=1</code> 启用完整的内存快照报告</li>
 </ul>
-
 <p>定义的关键阶段（<code>src/utils/startupProfiler.ts:49-53</code>）：</p>
+<div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">PHASE_DEFINITIONS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">import_time</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="s1">&#39;cli_entry&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;main_tsx_imports_loaded&#39;</span><span class="p">],</span>
+<span class="w">  </span><span class="nx">init_time</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="s1">&#39;init_function_start&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;init_function_end&#39;</span><span class="p">],</span>
+<span class="w">  </span><span class="nx">settings_time</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="s1">&#39;eagerLoadSettings_start&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;eagerLoadSettings_end&#39;</span><span class="p">],</span>
+<span class="w">  </span><span class="nx">total_time</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="s1">&#39;cli_entry&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;main_after_run&#39;</span><span class="p">],</span>
+<span class="p">}</span>
+</code></pre></div>
 
-<pre><code class="language-typescript">const PHASE_DEFINITIONS = {
-  import_time: ['cli_entry', 'main_tsx_imports_loaded'],
-  init_time: ['init_function_start', 'init_function_end'],
-  settings_time: ['eagerLoadSettings_start', 'eagerLoadSettings_end'],
-  total_time: ['cli_entry', 'main_after_run'],
-}</code></pre>
+<h2 id="29">2.9 启动流程总览</h2>
+<div class="codehilite"><pre><span></span><code><span class="n">sequenceDiagram</span>
+<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">OS</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">操作系统</span>
+<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">Entry</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">main</span><span class="p">.</span><span class="n">tsx</span><span class="w"> </span><span class="p">(</span><span class="n">顶层</span><span class="p">)</span>
+<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">Main</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">main</span><span class="p">()</span>
+<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">Run</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">run</span><span class="p">()</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">Commander</span>
+<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">Init</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">init</span><span class="p">()</span>
+<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">Setup</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">setup</span><span class="p">()</span>
+<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">REPL</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">REPL</span><span class="w"> </span><span class="n">渲染</span>
 
-<h2>2.9 启动流程总览</h2>
+<span class="w">    </span><span class="n">OS</span><span class="o">-&gt;&gt;</span><span class="nl">Entry</span><span class="p">:</span><span class="w"> </span><span class="n">进程启动</span>
+<span class="w">    </span><span class="n">Entry</span><span class="o">-&gt;&gt;</span><span class="nl">Entry</span><span class="p">:</span><span class="w"> </span><span class="n">profileCheckpoint</span><span class="p">(</span><span class="s1">&#39;main_tsx_entry&#39;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">Entry</span><span class="o">-&gt;&gt;</span><span class="nl">Entry</span><span class="p">:</span><span class="w"> </span><span class="n">startMdmRawRead</span><span class="p">()</span><span class="w"> </span><span class="o">[</span><span class="n">async, 并行</span><span class="o">]</span>
+<span class="w">    </span><span class="n">Entry</span><span class="o">-&gt;&gt;</span><span class="nl">Entry</span><span class="p">:</span><span class="w"> </span><span class="n">startKeychainPrefetch</span><span class="p">()</span><span class="w"> </span><span class="o">[</span><span class="n">async, 并行</span><span class="o">]</span>
+<span class="w">    </span><span class="n">Entry</span><span class="o">-&gt;&gt;</span><span class="nl">Entry</span><span class="p">:</span><span class="w"> </span><span class="n">模块加载</span><span class="w"> </span><span class="p">(</span><span class="o">~</span><span class="mi">135</span><span class="n">ms</span><span class="p">)</span>
+<span class="w">    </span><span class="n">Entry</span><span class="o">-&gt;&gt;</span><span class="nl">Entry</span><span class="p">:</span><span class="w"> </span><span class="n">profileCheckpoint</span><span class="p">(</span><span class="s1">&#39;main_tsx_imports_loaded&#39;</span><span class="p">)</span>
+<span class="w">    </span><span class="n">Entry</span><span class="o">-&gt;&gt;</span><span class="nl">Main</span><span class="p">:</span><span class="w"> </span><span class="n">main</span><span class="p">()</span>
+<span class="w">    </span><span class="n">Main</span><span class="o">-&gt;&gt;</span><span class="nl">Main</span><span class="p">:</span><span class="w"> </span><span class="n">安全检查</span><span class="w"> </span><span class="p">(</span><span class="n">Windows</span><span class="w"> </span><span class="k">PATH</span><span class="p">,</span><span class="w"> </span><span class="n">调试检测</span><span class="p">)</span>
+<span class="w">    </span><span class="n">Main</span><span class="o">-&gt;&gt;</span><span class="nl">Main</span><span class="p">:</span><span class="w"> </span><span class="n">提前</span><span class="w"> </span><span class="n">argv</span><span class="w"> </span><span class="n">处理</span><span class="w"> </span><span class="p">(</span><span class="nl">cc</span><span class="p">:</span><span class="o">//</span><span class="p">,</span><span class="w"> </span><span class="n">ssh</span><span class="p">,</span><span class="w"> </span><span class="n">assistant</span><span class="p">)</span>
+<span class="w">    </span><span class="n">Main</span><span class="o">-&gt;&gt;</span><span class="nl">Main</span><span class="p">:</span><span class="w"> </span><span class="n">eagerLoadSettings</span><span class="p">()</span>
+<span class="w">    </span><span class="n">Main</span><span class="o">-&gt;&gt;</span><span class="nl">Run</span><span class="p">:</span><span class="w"> </span><span class="n">run</span><span class="p">()</span>
+<span class="w">    </span><span class="n">Run</span><span class="o">-&gt;&gt;</span><span class="nl">Run</span><span class="p">:</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">CommanderCommand</span><span class="p">()</span>
+<span class="w">    </span><span class="n">Run</span><span class="o">-&gt;&gt;</span><span class="nl">Run</span><span class="p">:</span><span class="w"> </span><span class="n">注册子命令和选项</span>
+<span class="w">    </span><span class="n">Run</span><span class="o">-&gt;&gt;</span><span class="nl">Run</span><span class="p">:</span><span class="w"> </span><span class="n">program</span><span class="p">.</span><span class="n">parseAsync</span><span class="p">(</span><span class="n">argv</span><span class="p">)</span>
+<span class="w">    </span><span class="n">Run</span><span class="o">-&gt;&gt;</span><span class="nl">Init</span><span class="p">:</span><span class="w"> </span><span class="n">preAction</span><span class="w"> </span><span class="n">钩子触发</span>
+<span class="w">    </span><span class="n">Init</span><span class="o">-&gt;&gt;</span><span class="nl">Init</span><span class="p">:</span><span class="w"> </span><span class="n">ensureMdmSettingsLoaded</span><span class="p">()</span><span class="w"> </span><span class="o">[</span><span class="n">await</span><span class="o">]</span>
+<span class="w">    </span><span class="n">Init</span><span class="o">-&gt;&gt;</span><span class="nl">Init</span><span class="p">:</span><span class="w"> </span><span class="n">ensureKeychainPrefetchCompleted</span><span class="p">()</span><span class="w"> </span><span class="o">[</span><span class="n">await</span><span class="o">]</span>
+<span class="w">    </span><span class="n">Init</span><span class="o">-&gt;&gt;</span><span class="nl">Init</span><span class="p">:</span><span class="w"> </span><span class="n">init</span><span class="p">()</span><span class="w"> </span><span class="o">[</span><span class="n">memoized</span><span class="o">]</span>
+<span class="w">    </span><span class="n">Init</span><span class="o">-&gt;&gt;</span><span class="nl">Setup</span><span class="p">:</span><span class="w"> </span><span class="n">setup</span><span class="p">()</span>
+<span class="w">    </span><span class="n">Setup</span><span class="o">-&gt;&gt;</span><span class="nl">Setup</span><span class="p">:</span><span class="w"> </span><span class="n">setCwd</span><span class="p">,</span><span class="w"> </span><span class="n">captureHooksConfigSnapshot</span>
+<span class="w">    </span><span class="n">Setup</span><span class="o">-&gt;&gt;</span><span class="nl">Setup</span><span class="p">:</span><span class="w"> </span><span class="n">Worktree</span><span class="o">/</span><span class="n">UDS</span><span class="w"> </span><span class="n">初始化</span>
+<span class="w">    </span><span class="n">Setup</span><span class="o">-&gt;&gt;</span><span class="nl">REPL</span><span class="p">:</span><span class="w"> </span><span class="n">launchRepl</span><span class="p">()</span>
+<span class="w">    </span><span class="n">REPL</span><span class="o">-&gt;&gt;</span><span class="nl">REPL</span><span class="p">:</span><span class="w"> </span><span class="n">首次渲染完成</span>
+<span class="w">    </span><span class="n">REPL</span><span class="o">-&gt;&gt;</span><span class="nl">REPL</span><span class="p">:</span><span class="w"> </span><span class="n">startDeferredPrefetches</span><span class="p">()</span><span class="w"> </span><span class="o">[</span><span class="n">全部 async</span><span class="o">]</span>
+</code></pre></div>
 
-<pre><code class="language-mermaid">sequenceDiagram
-    participant OS as 操作系统
-    participant Entry as main.tsx (顶层)
-    participant Main as main()
-    participant Run as run() / Commander
-    participant Init as init()
-    participant Setup as setup()
-    participant REPL as REPL 渲染
-
-<p>OS->>Entry: 进程启动
-    Entry->>Entry: profileCheckpoint('main_tsx_entry')
-    Entry->>Entry: startMdmRawRead() [async, 并行]
-    Entry->>Entry: startKeychainPrefetch() [async, 并行]
-    Entry->>Entry: 模块加载 (~135ms)
-    Entry->>Entry: profileCheckpoint('main_tsx_imports_loaded')
-    Entry->>Main: main()
-    Main->>Main: 安全检查 (Windows PATH, 调试检测)
-    Main->>Main: 提前 argv 处理 (cc://, ssh, assistant)
-    Main->>Main: eagerLoadSettings()
-    Main->>Run: run()
-    Run->>Run: new CommanderCommand()
-    Run->>Run: 注册子命令和选项
-    Run->>Run: program.parseAsync(argv)
-    Run->>Init: preAction 钩子触发
-    Init->>Init: ensureMdmSettingsLoaded() [await]
-    Init->>Init: ensureKeychainPrefetchCompleted() [await]
-    Init->>Init: init() [memoized]
-    Init->>Setup: setup()
-    Setup->>Setup: setCwd, captureHooksConfigSnapshot
-    Setup->>Setup: Worktree/UDS 初始化
-    Setup->>REPL: launchRepl()
-    REPL->>REPL: 首次渲染完成
-    REPL->>REPL: startDeferredPrefetches() [全部 async]</code></pre></p>
-
-<h2>2.10 entrypoints 目录</h2>
-
-<code>src/entrypoints/</code> 目录包含不同使用场景的入口适配层：
-
-<p>| 文件 | 用途 |
-|------|------|
-| <code>init.ts</code> | 核心初始化逻辑（memoized） |
-| <code>cli.tsx</code> | 标准 CLI 交互模式入口 |
-| <code>mcp.ts</code> | MCP 服务器模式入口 |
-| <code>sdk/</code> | SDK 模式（TypeScript/Python SDK 调用） |
-| <code>agentSdkTypes.ts</code> | Agent SDK 专用类型定义 |</p>
-
+<h2 id="210-entrypoints">2.10 entrypoints 目录</h2>
+<p><code>src/entrypoints/</code> 目录包含不同使用场景的入口适配层：</p>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>init.ts</code></td>
+<td>核心初始化逻辑（memoized）</td>
+</tr>
+<tr>
+<td><code>cli.tsx</code></td>
+<td>标准 CLI 交互模式入口</td>
+</tr>
+<tr>
+<td><code>mcp.ts</code></td>
+<td>MCP 服务器模式入口</td>
+</tr>
+<tr>
+<td><code>sdk/</code></td>
+<td>SDK 模式（TypeScript/Python SDK 调用）</td>
+</tr>
+<tr>
+<td><code>agentSdkTypes.ts</code></td>
+<td>Agent SDK 专用类型定义</td>
+</tr>
+</tbody>
+</table>
 <p>这种分层使得相同的核心逻辑可以通过不同的"壳"暴露给不同的调用方，而 <code>CLAUDE_CODE_ENTRYPOINT</code> 环境变量则用于在运行时识别当前入口类型（<code>src/main.tsx:517-540</code>）。</p>
             </article>
             

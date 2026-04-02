@@ -7,7 +7,11 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.1/github-markdown.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script>hljs.highlightAll();</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.0/mermaid.min.js"></script>
+    <script>
+        hljs.highlightAll();
+        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+    </script>
     <style>
         body {
             margin: 0;
@@ -20,6 +24,9 @@
             color: white;
             padding: 15px 0;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
         }
         .nav-container {
             max-width: 1200px;
@@ -33,9 +40,10 @@
             color: white;
             text-decoration: none;
             font-weight: 500;
+            transition: opacity 0.3s;
         }
         .nav a:hover {
-            text-decoration: underline;
+            opacity: 0.8;
         }
         .container {
             max-width: 1200px;
@@ -51,8 +59,41 @@
         .markdown-body {
             box-sizing: border-box;
             min-width: 200px;
-            max-width: 980px;
+            max-width: 100%;
             margin: 0 auto;
+        }
+        .markdown-body pre {
+            background: #f6f8fa;
+            border-radius: 6px;
+            padding: 16px;
+        }
+        .markdown-body code {
+            background: #f6f8fa;
+            padding: 0.2em 0.4em;
+            border-radius: 3px;
+            font-size: 85%;
+        }
+        .markdown-body pre code {
+            background: transparent;
+            padding: 0;
+        }
+        .markdown-body table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 20px 0;
+        }
+        .markdown-body table th,
+        .markdown-body table td {
+            border: 1px solid #dfe2e5;
+            padding: 8px 13px;
+        }
+        .markdown-body table th {
+            background: #f6f8fa;
+            font-weight: 600;
+        }
+        .mermaid {
+            text-align: center;
+            margin: 30px 0;
         }
         .pagination {
             display: flex;
@@ -80,6 +121,12 @@
         .pagination .next::after {
             content: " →";
         }
+        blockquote {
+            border-left: 4px solid #667eea;
+            padding-left: 20px;
+            color: #6a737d;
+            margin: 20px 0;
+        }
         @media (max-width: 768px) {
             .content {
                 padding: 30px 20px;
@@ -91,73 +138,64 @@
     <div class="nav">
         <div class="nav-container">
             <a href="../index.html">📘 解密 Claude Code</a>
-            <a href="../index.html#toc">目录</a>
+            <a href="../index.html">目录</a>
         </div>
     </div>
     
     <div class="container">
         <div class="content">
             <article class="markdown-body">
-<h1>第8章：Remote Control Bridge——云端远程控制架构</h1>
-
-<p>> Claude Code 不仅是一个本地命令行工具，它还内置了一套完整的远程控制系统，允许用户通过 claude.ai 网页界面远程驱动本地 CLI 会话。本章深入剖析这套被称为 "Bridge"（桥接层）的远程控制架构：它如何建立云端与本地的双向通信、如何管理会话生命周期，以及传输层的技术演进。</p>
-
-<h2>8.1 什么是 Bridge？</h2>
-
+<h1 id="8remote-control-bridge">第8章：Remote Control Bridge——云端远程控制架构</h1>
+<blockquote>
+<p>Claude Code 不仅是一个本地命令行工具，它还内置了一套完整的远程控制系统，允许用户通过 claude.ai 网页界面远程驱动本地 CLI 会话。本章深入剖析这套被称为 "Bridge"（桥接层）的远程控制架构：它如何建立云端与本地的双向通信、如何管理会话生命周期，以及传输层的技术演进。</p>
+</blockquote>
+<h2 id="81-bridge">8.1 什么是 Bridge？</h2>
 <p>在源码目录 <code>src/bridge/</code> 中有 31 个文件，这是整个 Claude Code 代码库中规模最大、逻辑最复杂的子系统之一。Bridge 的核心使命是：<strong>让用户能够从 claude.ai 网页界面远程操控运行在本地机器上的 Claude Code CLI 实例</strong>。</p>
-
 <p>这个功能在代码中被称为 "Remote Control"（远程控制），对应用户可见的命令 <code>claude remote-control</code>。</p>
-
-<h3>为什么需要 Bridge？</h3>
-
+<h3 id="bridge">为什么需要 Bridge？</h3>
 <p>Claude Code 在本地终端运行，可以访问本地文件系统、执行 shell 命令。而 claude.ai 是一个 Web 应用，无法直接操控本地进程。Bridge 系统正是为了解决这个天然隔离而设计的：</p>
-
 <ul>
 <li><strong>本地端</strong>：CLI 进程注册自己为一个"环境"（Environment），持续轮询服务器获取工作任务</li>
 <li><strong>云端</strong>：claude.ai 通过 Anthropic API 向该环境派发会话请求</li>
 <li><strong>传输层</strong>：WebSocket 或 SSE 承载实时的消息双向流动</li>
 </ul>
-
-<h3>功能门控</h3>
-
+<h3 id="_1">功能门控</h3>
 <p>Bridge 功能需要满足多个条件才会启用，这在 <code>src/bridge/bridgeEnabled.ts</code> 中有明确体现：</p>
-
-<pre><code class="language-typescript">// src/bridge/bridgeEnabled.ts:28-36
-export function isBridgeEnabled(): boolean {
-  return feature('BRIDGE_MODE')
-    ? isClaudeAISubscriber() &&
-        getFeatureValue_CACHED_MAY_BE_STALE('tengu_ccr_bridge', false)
-    : false
-}</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/bridge/bridgeEnabled.ts:28-36</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">isBridgeEnabled</span><span class="p">()</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">feature</span><span class="p">(</span><span class="s1">&#39;BRIDGE_MODE&#39;</span><span class="p">)</span>
+<span class="w">    </span><span class="o">?</span><span class="w"> </span><span class="nx">isClaudeAISubscriber</span><span class="p">()</span><span class="w"> </span><span class="o">&amp;&amp;</span>
+<span class="w">        </span><span class="nx">getFeatureValue_CACHED_MAY_BE_STALE</span><span class="p">(</span><span class="s1">&#39;tengu_ccr_bridge&#39;</span><span class="p">,</span><span class="w"> </span><span class="kc">false</span><span class="p">)</span>
+<span class="w">    </span><span class="o">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p>三个条件缺一不可：
 1. 构建时启用了 <code>BRIDGE_MODE</code> feature flag
 2. 用户拥有 claude.ai 订阅（<code>isClaudeAISubscriber()</code>）
 3. GrowthBook 功能标志 <code>tengu_ccr_bridge</code> 为 true</p>
-
 <p>这意味着 Bridge 是一个<strong>仅对 claude.ai 订阅者开放的付费功能</strong>，并通过服务端功能标志灰度发布。</p>
+<h2 id="82">8.2 系统架构总览</h2>
+<div class="codehilite"><pre><span></span><code><span class="nf">graph</span><span class="w"> </span><span class="n">TB</span>
+<span class="w">    </span><span class="n">subgraph</span><span class="w"> </span><span class="err">用户侧</span>
+<span class="w">        </span><span class="n">UI</span><span class="p">[</span><span class="n">claude</span><span class="p">.</span><span class="n">ai</span><span class="w"> </span><span class="err">网页</span><span class="p">]</span>
+<span class="w">        </span><span class="n">CLI</span><span class="p">[</span><span class="err">本地</span><span class="w"> </span><span class="n">claude</span><span class="w"> </span><span class="n">CLI</span><span class="p">]</span>
+<span class="w">    </span><span class="kd">end</span>
 
-<h2>8.2 系统架构总览</h2>
+<span class="w">    </span><span class="n">subgraph</span><span class="w"> </span><span class="n">Anthropic</span><span class="w"> </span><span class="err">云端</span>
+<span class="w">        </span><span class="n">API</span><span class="p">[</span><span class="n">Environments</span><span class="w"> </span><span class="n">API</span><span class="o">&lt;</span><span class="n">br</span><span class="o">/&gt;/</span><span class="n">v1</span><span class="o">/</span><span class="n">environments</span><span class="o">/</span><span class="n">bridge</span><span class="p">]</span>
+<span class="w">        </span><span class="n">CCR</span><span class="p">[</span><span class="n">Cloud</span><span class="w"> </span><span class="n">Code</span><span class="w"> </span><span class="n">Runner</span><span class="o">&lt;</span><span class="n">br</span><span class="o">/&gt;</span><span class="n">Session</span><span class="w"> </span><span class="n">Ingress</span><span class="p">]</span>
+<span class="w">        </span><span class="n">WORK</span><span class="p">[</span><span class="n">Work</span><span class="w"> </span><span class="n">Queue</span><span class="o">&lt;</span><span class="n">br</span><span class="o">/&gt;</span><span class="n">poll</span><span class="o">/</span><span class="n">ack</span><span class="o">/</span><span class="n">heartbeat</span><span class="p">]</span>
+<span class="w">    </span><span class="kd">end</span>
 
-<pre><code class="language-mermaid">graph TB
-    subgraph 用户侧
-        UI[claude.ai 网页]
-        CLI[本地 claude CLI]
-    end
-
-<p>subgraph Anthropic 云端
-        API[Environments API<br/>/v1/environments/bridge]
-        CCR[Cloud Code Runner<br/>Session Ingress]
-        WORK[Work Queue<br/>poll/ack/heartbeat]
-    end</p>
-
-<p>UI -->|派发会话请求| API
-    CLI -->|1. POST 注册环境| API
-    CLI -->|2. 轮询工作任务| WORK
-    WORK -->|3. 返回 WorkResponse| CLI
-    CLI -->|4. Acknowledge| WORK
-    CLI <-->|5. 双向消息流| CCR
-    UI <-->|实时消息| CCR</code></pre></p>
+<span class="w">    </span><span class="n">UI</span><span class="w"> </span><span class="o">--&gt;|</span><span class="err">派发会话请求</span><span class="o">|</span><span class="w"> </span><span class="n">API</span>
+<span class="w">    </span><span class="n">CLI</span><span class="w"> </span><span class="o">--&gt;|</span><span class="mf">1.</span><span class="w"> </span><span class="n">POST</span><span class="w"> </span><span class="err">注册环境</span><span class="o">|</span><span class="w"> </span><span class="n">API</span>
+<span class="w">    </span><span class="n">CLI</span><span class="w"> </span><span class="o">--&gt;|</span><span class="mf">2.</span><span class="w"> </span><span class="err">轮询工作任务</span><span class="o">|</span><span class="w"> </span><span class="n">WORK</span>
+<span class="w">    </span><span class="n">WORK</span><span class="w"> </span><span class="o">--&gt;|</span><span class="mf">3.</span><span class="w"> </span><span class="err">返回</span><span class="w"> </span><span class="n">WorkResponse</span><span class="o">|</span><span class="w"> </span><span class="n">CLI</span>
+<span class="w">    </span><span class="n">CLI</span><span class="w"> </span><span class="o">--&gt;|</span><span class="mf">4.</span><span class="w"> </span><span class="n">Acknowledge</span><span class="o">|</span><span class="w"> </span><span class="n">WORK</span>
+<span class="w">    </span><span class="n">CLI</span><span class="w"> </span><span class="o">&lt;--&gt;|</span><span class="mf">5.</span><span class="w"> </span><span class="err">双向消息流</span><span class="o">|</span><span class="w"> </span><span class="n">CCR</span>
+<span class="w">    </span><span class="n">UI</span><span class="w"> </span><span class="o">&lt;--&gt;|</span><span class="err">实时消息</span><span class="o">|</span><span class="w"> </span><span class="n">CCR</span>
+</code></pre></div>
 
 <p>整体流程分为五个阶段：
 1. <strong>注册</strong>：CLI 调用 <code>POST /v1/environments/bridge</code>，获得 <code>environment_id</code> 和 <code>environment_secret</code>
@@ -165,234 +203,270 @@ export function isBridgeEnabled(): boolean {
 3. <strong>任务接收</strong>：服务端返回 <code>WorkResponse</code>，包含会话 ID 和加密的 <code>WorkSecret</code>
 4. <strong>确认</strong>：调用 <code>POST .../work/{id}/ack</code> 声明已接受任务
 5. <strong>会话执行</strong>：通过 WebSocket 或 SSE 传输层与 Session Ingress 双向通信</p>
-
-<h2>8.3 API 客户端层（bridgeApi.ts）</h2>
-
-<code>src/bridge/bridgeApi.ts</code> 实现了所有与 Environments API 交互的 HTTP 调用，封装为 <code>BridgeApiClient</code> 接口。
-
-<h3>核心 API 端点</h3>
-
-<p>| 方法 | 端点 | 用途 |
-|------|------|------|
-| POST | <code>/v1/environments/bridge</code> | 注册桥接环境 |
-| GET | <code>/v1/environments/{id}/work/poll</code> | 轮询工作任务 |
-| POST | <code>.../work/{id}/ack</code> | 确认接受任务 |
-| POST | <code>.../work/{id}/heartbeat</code> | 保活心跳 |
-| POST | <code>.../work/{id}/stop</code> | 停止任务 |
-| DELETE | <code>/v1/environments/bridge/{id}</code> | 注销环境 |
-| POST | <code>/v1/sessions/{id}/events</code> | 发送权限响应事件 |</p>
-
+<h2 id="83-api-bridgeapits">8.3 API 客户端层（bridgeApi.ts）</h2>
+<p><code>src/bridge/bridgeApi.ts</code> 实现了所有与 Environments API 交互的 HTTP 调用，封装为 <code>BridgeApiClient</code> 接口。</p>
+<h3 id="api">核心 API 端点</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>端点</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/v1/environments/bridge</code></td>
+<td>注册桥接环境</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/v1/environments/{id}/work/poll</code></td>
+<td>轮询工作任务</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>.../work/{id}/ack</code></td>
+<td>确认接受任务</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>.../work/{id}/heartbeat</code></td>
+<td>保活心跳</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>.../work/{id}/stop</code></td>
+<td>停止任务</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/v1/environments/bridge/{id}</code></td>
+<td>注销环境</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/v1/sessions/{id}/events</code></td>
+<td>发送权限响应事件</td>
+</tr>
+</tbody>
+</table>
 <p>所有请求都必须携带专用的 Beta 头：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/bridge/bridgeApi.ts:38</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">BETA_HEADER</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;environments-2025-11-01&#39;</span>
+</code></pre></div>
 
-<pre><code class="language-typescript">// src/bridge/bridgeApi.ts:38
-const BETA_HEADER = 'environments-2025-11-01'</code></pre>
-
-<h3>安全：ID 路径注入防护</h3>
-
+<h3 id="id">安全：ID 路径注入防护</h3>
 <p>注意到一个细节——在将服务端返回的 ID 插入 URL 路径前，代码会做严格的字符白名单校验：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/bridge/bridgeApi.ts:41-53</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">SAFE_ID_PATTERN</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sr">/^[a-zA-Z0-9_-]+$/</span>
 
-<pre><code class="language-typescript">// src/bridge/bridgeApi.ts:41-53
-const SAFE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/
-
-<p>export function validateBridgeId(id: string, label: string): string {
-  if (!id || !SAFE_ID_PATTERN.test(id)) {
-    throw new Error(<code>Invalid ${label}: contains unsafe characters</code>)
-  }
-  return id
-}</code></pre></p>
+<span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">validateBridgeId</span><span class="p">(</span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">id</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">!</span><span class="nx">SAFE_ID_PATTERN</span><span class="p">.</span><span class="nx">test</span><span class="p">(</span><span class="nx">id</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="sb">`Invalid </span><span class="si">${</span><span class="nx">label</span><span class="si">}</span><span class="sb">: contains unsafe characters`</span><span class="p">)</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">id</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p>这防止了形如 <code>../../admin</code> 的路径穿越攻击。</p>
-
-<h3>OAuth 401 重试机制</h3>
-
+<h3 id="oauth-401">OAuth 401 重试机制</h3>
 <p>Bridge API 实现了与主 API 调用路径一致的 OAuth token 刷新逻辑：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/bridge/bridgeApi.ts:106-139</span>
+<span class="k">async</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">withOAuthRetry</span><span class="o">&lt;</span><span class="nx">T</span><span class="o">&gt;</span><span class="p">(</span>
+<span class="w">  </span><span class="nx">fn</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="nx">accessToken</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="p">{</span><span class="w"> </span><span class="nx">status</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span><span class="w"> </span><span class="nx">data</span><span class="o">:</span><span class="w"> </span><span class="kt">T</span><span class="w"> </span><span class="p">}</span><span class="o">&gt;</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">context</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span>
+<span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="p">{</span><span class="w"> </span><span class="nx">status</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span><span class="w"> </span><span class="nx">data</span><span class="o">:</span><span class="w"> </span><span class="kt">T</span><span class="w"> </span><span class="p">}</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">response</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">fn</span><span class="p">(</span><span class="nx">accessToken</span><span class="p">)</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">response</span><span class="p">.</span><span class="nx">status</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="mf">401</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nx">response</span>
 
-<pre><code class="language-typescript">// src/bridge/bridgeApi.ts:106-139
-async function withOAuthRetry<T>(
-  fn: (accessToken: string) => Promise<{ status: number; data: T }>,
-  context: string,
-): Promise<{ status: number; data: T }> {
-  const response = await fn(accessToken)
-  if (response.status !== 401) return response
+<span class="w">  </span><span class="c1">// 尝试刷新 token，成功则重试一次</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">refreshed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">deps</span><span class="p">.</span><span class="nx">onAuth401</span><span class="p">(</span><span class="nx">accessToken</span><span class="p">)</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">refreshed</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">retryResponse</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">fn</span><span class="p">(</span><span class="nx">newToken</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">retryResponse</span><span class="p">.</span><span class="nx">status</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="mf">401</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nx">retryResponse</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">response</span><span class="w"> </span><span class="c1">// 刷新失败，返回 401</span>
+<span class="p">}</span>
+</code></pre></div>
 
-<p>// 尝试刷新 token，成功则重试一次
-  const refreshed = await deps.onAuth401(accessToken)
-  if (refreshed) {
-    const retryResponse = await fn(newToken)
-    if (retryResponse.status !== 401) return retryResponse
-  }
-  return response // 刷新失败，返回 401
-}</code></pre></p>
-
-<h2>8.4 传输层演进：v1 与 v2</h2>
-
+<h2 id="84-v1-v2">8.4 传输层演进：v1 与 v2</h2>
 <p>Bridge 经历了一次重要的传输层升级，源码中清晰地保留了两套实现的痕迹。</p>
-
-<h3>v1：HybridTransport（WebSocket + POST）</h3>
-
+<h3 id="v1hybridtransportwebsocket-post">v1：HybridTransport（WebSocket + POST）</h3>
 <p>v1 传输层使用 <code>HybridTransport</code>（<code>src/cli/transports/HybridTransport.js</code>）：
-<ul>
-<li><strong>读</strong>：WebSocket 长连接接收服务端推送</li>
-<li><strong>写</strong>：HTTP POST 发送消息到 Session Ingress</li>
-</ul></p>
-
-<h3>v2：SSETransport + CCRClient</h3>
-
+- <strong>读</strong>：WebSocket 长连接接收服务端推送
+- <strong>写</strong>：HTTP POST 发送消息到 Session Ingress</p>
+<h3 id="v2ssetransport-ccrclient">v2：SSETransport + CCRClient</h3>
 <p>v2 传输层拆分了读写通道，在 <code>src/bridge/replBridgeTransport.ts</code> 中有详细说明：</p>
-
-<pre><code class="language-typescript">// src/bridge/replBridgeTransport.ts:16-21
-// - v1: HybridTransport (WS reads + POST writes to Session-Ingress)
-// - v2: SSETransport (reads) + CCRClient (writes to CCR v2 /worker/*)
-//
-// The v2 write path goes through CCRClient.writeEvent → SerialBatchEventUploader,
-// NOT through SSETransport.write()</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/bridge/replBridgeTransport.ts:16-21</span>
+<span class="c1">// - v1: HybridTransport (WS reads + POST writes to Session-Ingress)</span>
+<span class="c1">// - v2: SSETransport (reads) + CCRClient (writes to CCR v2 /worker/*)</span>
+<span class="c1">//</span>
+<span class="c1">// The v2 write path goes through CCRClient.writeEvent → SerialBatchEventUploader,</span>
+<span class="c1">// NOT through SSETransport.write()</span>
+</code></pre></div>
 
 <p>v2 的核心优势：
-<ul>
-<li><strong>批量写入</strong>：<code>SerialBatchEventUploader</code> 将多条消息合并发送，减少 HTTP 往返</li>
-<li><strong>序列号续传</strong>：SSE 传输层维护 <code>lastSequenceNum</code>，传输中断重连时服务端可从断点续传，避免重放整个会话历史</li>
-<li><strong>状态上报</strong>：通过 <code>PUT /worker</code> 向服务端汇报当前状态（如 <code>requires_action</code> 表示等待用户权限确认）</li>
-</ul></p>
-
+- <strong>批量写入</strong>：<code>SerialBatchEventUploader</code> 将多条消息合并发送，减少 HTTP 往返
+- <strong>序列号续传</strong>：SSE 传输层维护 <code>lastSequenceNum</code>，传输中断重连时服务端可从断点续传，避免重放整个会话历史
+- <strong>状态上报</strong>：通过 <code>PUT /worker</code> 向服务端汇报当前状态（如 <code>requires_action</code> 表示等待用户权限确认）</p>
 <p>v2 的启用同样由 GrowthBook 标志控制：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/bridge/bridgeEnabled.ts:126-130</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">isEnvLessBridgeEnabled</span><span class="p">()</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">feature</span><span class="p">(</span><span class="s1">&#39;BRIDGE_MODE&#39;</span><span class="p">)</span>
+<span class="w">    </span><span class="o">?</span><span class="w"> </span><span class="nx">getFeatureValue_CACHED_MAY_BE_STALE</span><span class="p">(</span><span class="s1">&#39;tengu_bridge_repl_v2&#39;</span><span class="p">,</span><span class="w"> </span><span class="kc">false</span><span class="p">)</span>
+<span class="w">    </span><span class="o">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="p">}</span>
+</code></pre></div>
 
-<pre><code class="language-typescript">// src/bridge/bridgeEnabled.ts:126-130
-export function isEnvLessBridgeEnabled(): boolean {
-  return feature('BRIDGE_MODE')
-    ? getFeatureValue_CACHED_MAY_BE_STALE('tengu_bridge_repl_v2', false)
-    : false
-}</code></pre>
-
-<h2>8.5 消息协议（bridgeMessaging.ts）</h2>
-
-<code>src/bridge/bridgeMessaging.ts</code> 是传输层的核心逻辑，处理消息的解析、路由和去重。
-
-<h3>消息类型体系</h3>
-
+<h2 id="85-bridgemessagingts">8.5 消息协议（bridgeMessaging.ts）</h2>
+<p><code>src/bridge/bridgeMessaging.ts</code> 是传输层的核心逻辑，处理消息的解析、路由和去重。</p>
+<h3 id="_2">消息类型体系</h3>
 <p>Bridge 传输的消息分为三大类，通过 <code>type</code> 字段区分：</p>
-
-<p>| 消息类型 | 方向 | 用途 |
-|----------|------|------|
-| <code>user</code> | 云端 → 本地 | 用户输入，触发 CLI 处理 |
-| <code>assistant</code> | 本地 → 云端 | Claude 的回复，展示给用户 |
-| <code>control_request</code> | 双向 | 会话控制（初始化、中断、切换模型等） |
-| <code>control_response</code> | 双向 | 对控制请求的响应 |
-| <code>result</code> | 本地 → 云端 | 会话结束信号，触发服务端归档 |
-| <code>system</code> (local_command) | 本地 → 云端 | 斜杠命令执行事件 |</p>
-
-<h3>消息过滤规则</h3>
-
+<table>
+<thead>
+<tr>
+<th>消息类型</th>
+<th>方向</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>user</code></td>
+<td>云端 → 本地</td>
+<td>用户输入，触发 CLI 处理</td>
+</tr>
+<tr>
+<td><code>assistant</code></td>
+<td>本地 → 云端</td>
+<td>Claude 的回复，展示给用户</td>
+</tr>
+<tr>
+<td><code>control_request</code></td>
+<td>双向</td>
+<td>会话控制（初始化、中断、切换模型等）</td>
+</tr>
+<tr>
+<td><code>control_response</code></td>
+<td>双向</td>
+<td>对控制请求的响应</td>
+</tr>
+<tr>
+<td><code>result</code></td>
+<td>本地 → 云端</td>
+<td>会话结束信号，触发服务端归档</td>
+</tr>
+<tr>
+<td><code>system</code> (local_command)</td>
+<td>本地 → 云端</td>
+<td>斜杠命令执行事件</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_3">消息过滤规则</h3>
 <p>并非所有本地消息都会转发到 Bridge，<code>isEligibleBridgeMessage</code> 函数定义了过滤规则：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/bridge/bridgeMessaging.ts:77-88</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">isEligibleBridgeMessage</span><span class="p">(</span><span class="nx">m</span><span class="o">:</span><span class="w"> </span><span class="kt">Message</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="c1">// 虚拟消息（REPL 内部调用）只显示，不转发</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">((</span><span class="nx">m</span><span class="p">.</span><span class="kr">type</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;user&#39;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">m</span><span class="p">.</span><span class="kr">type</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;assistant&#39;</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">m</span><span class="p">.</span><span class="nx">isVirtual</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="nx">m</span><span class="p">.</span><span class="kr">type</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;user&#39;</span><span class="w"> </span><span class="o">||</span>
+<span class="w">    </span><span class="nx">m</span><span class="p">.</span><span class="kr">type</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;assistant&#39;</span><span class="w"> </span><span class="o">||</span>
+<span class="w">    </span><span class="p">(</span><span class="nx">m</span><span class="p">.</span><span class="kr">type</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;system&#39;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">m</span><span class="p">.</span><span class="nx">subtype</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;local_command&#39;</span><span class="p">)</span>
+<span class="w">  </span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
 
-<pre><code class="language-typescript">// src/bridge/bridgeMessaging.ts:77-88
-export function isEligibleBridgeMessage(m: Message): boolean {
-  // 虚拟消息（REPL 内部调用）只显示，不转发
-  if ((m.type === 'user' || m.type === 'assistant') && m.isVirtual) {
-    return false
-  }
-  return (
-    m.type === 'user' ||
-    m.type === 'assistant' ||
-    (m.type === 'system' && m.subtype === 'local_command')
-  )
-}</code></pre>
-
-<h3>Echo 去重机制</h3>
-
+<h3 id="echo">Echo 去重机制</h3>
 <p>由于 WebSocket/SSE 的广播特性，CLI 发出的消息可能被服务端回传给自己（Echo）。<code>BoundedUUIDSet</code> 类用一个固定容量的环形缓冲区追踪最近发送的 UUID，实现 O(1) 的去重查找：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/bridge/bridgeMessaging.ts:429-461</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">class</span><span class="w"> </span><span class="nx">BoundedUUIDSet</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">capacity</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span>
+<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">ring</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="kt">string</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">undefined</span><span class="p">)[]</span>
+<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">set</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nb">Set</span><span class="o">&lt;</span><span class="kt">string</span><span class="o">&gt;</span><span class="p">()</span>
+<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">writeIdx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0</span>
 
-<pre><code class="language-typescript">// src/bridge/bridgeMessaging.ts:429-461
-export class BoundedUUIDSet {
-  private readonly capacity: number
-  private readonly ring: (string | undefined)[]
-  private readonly set = new Set<string>()
-  private writeIdx = 0
+<span class="w">  </span><span class="nx">add</span><span class="p">(</span><span class="nx">uuid</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// 环形写入，淘汰最旧条目</span>
+<span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">evicted</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">ring</span><span class="p">[</span><span class="k">this</span><span class="p">.</span><span class="nx">writeIdx</span><span class="p">]</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">evicted</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="kc">undefined</span><span class="p">)</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">set</span><span class="p">.</span><span class="ow">delete</span><span class="p">(</span><span class="nx">evicted</span><span class="p">)</span>
+<span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">ring</span><span class="p">[</span><span class="k">this</span><span class="p">.</span><span class="nx">writeIdx</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">uuid</span>
+<span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">set</span><span class="p">.</span><span class="nx">add</span><span class="p">(</span><span class="nx">uuid</span><span class="p">)</span>
+<span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">writeIdx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">writeIdx</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">1</span><span class="p">)</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">capacity</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
 
-<p>add(uuid: string): void {
-    // 环形写入，淘汰最旧条目
-    const evicted = this.ring[this.writeIdx]
-    if (evicted !== undefined) this.set.delete(evicted)
-    this.ring[this.writeIdx] = uuid
-    this.set.add(uuid)
-    this.writeIdx = (this.writeIdx + 1) % this.capacity
-  }
-}</code></pre></p>
+<h3 id="_4">服务端控制请求处理</h3>
+<p><code>handleServerControlRequest</code> 函数处理来自服务端的控制指令，这些指令必须在约 10-14 秒内响应，否则服务端会断开 WebSocket：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/bridge/bridgeMessaging.ts:243-391</span>
+<span class="k">switch</span><span class="w"> </span><span class="p">(</span><span class="nx">request</span><span class="p">.</span><span class="nx">request</span><span class="p">.</span><span class="nx">subtype</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">case</span><span class="w"> </span><span class="s1">&#39;initialize&#39;</span><span class="o">:</span>
+<span class="w">    </span><span class="c1">// 返回最小化能力集：commands=[], models=[], pid=process.pid</span>
+<span class="w">    </span><span class="k">break</span>
+<span class="w">  </span><span class="k">case</span><span class="w"> </span><span class="s1">&#39;set_model&#39;</span><span class="o">:</span>
+<span class="w">    </span><span class="nx">onSetModel</span><span class="o">?</span><span class="p">.(</span><span class="nx">request</span><span class="p">.</span><span class="nx">request</span><span class="p">.</span><span class="nx">model</span><span class="p">)</span>
+<span class="w">    </span><span class="k">break</span>
+<span class="w">  </span><span class="k">case</span><span class="w"> </span><span class="s1">&#39;set_permission_mode&#39;</span><span class="o">:</span>
+<span class="w">    </span><span class="c1">// 支持动态切换权限模式（auto/default/manual）</span>
+<span class="w">    </span><span class="k">break</span>
+<span class="w">  </span><span class="k">case</span><span class="w"> </span><span class="s1">&#39;interrupt&#39;</span><span class="o">:</span>
+<span class="w">    </span><span class="nx">onInterrupt</span><span class="o">?</span><span class="p">.()</span>
+<span class="w">    </span><span class="k">break</span>
+<span class="p">}</span>
+</code></pre></div>
 
-<h3>服务端控制请求处理</h3>
+<h2 id="86-typests">8.6 会话类型系统（types.ts）</h2>
+<p><code>src/bridge/types.ts</code> 定义了 Bridge 系统的核心数据类型。</p>
+<h3 id="bridgeconfig">BridgeConfig：环境配置</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/bridge/types.ts:81-115</span>
+<span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">BridgeConfig</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">dir</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w">            </span><span class="c1">// 工作目录</span>
+<span class="w">  </span><span class="nx">machineName</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w">    </span><span class="c1">// 机器标识（用于 claude.ai 显示）</span>
+<span class="w">  </span><span class="nx">branch</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w">         </span><span class="c1">// 当前 git 分支</span>
+<span class="w">  </span><span class="nx">gitRepoUrl</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">  </span><span class="nx">maxSessions</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w">    </span><span class="c1">// 最大并发会话数</span>
+<span class="w">  </span><span class="nx">spawnMode</span><span class="o">:</span><span class="w"> </span><span class="kt">SpawnMode</span><span class="w">   </span><span class="c1">// 会话隔离模式</span>
+<span class="w">  </span><span class="nx">bridgeId</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w">       </span><span class="c1">// 客户端生成的 UUID</span>
+<span class="w">  </span><span class="nx">workerType</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w">     </span><span class="c1">// 工作类型标识</span>
+<span class="w">  </span><span class="c1">// ...</span>
+<span class="p">}</span>
+</code></pre></div>
 
-<code>handleServerControlRequest</code> 函数处理来自服务端的控制指令，这些指令必须在约 10-14 秒内响应，否则服务端会断开 WebSocket：
-
-<pre><code class="language-typescript">// src/bridge/bridgeMessaging.ts:243-391
-switch (request.request.subtype) {
-  case 'initialize':
-    // 返回最小化能力集：commands=[], models=[], pid=process.pid
-    break
-  case 'set_model':
-    onSetModel?.(request.request.model)
-    break
-  case 'set_permission_mode':
-    // 支持动态切换权限模式（auto/default/manual）
-    break
-  case 'interrupt':
-    onInterrupt?.()
-    break
-}</code></pre>
-
-<h2>8.6 会话类型系统（types.ts）</h2>
-
-<code>src/bridge/types.ts</code> 定义了 Bridge 系统的核心数据类型。
-
-<h3>BridgeConfig：环境配置</h3>
-
-<pre><code class="language-typescript">// src/bridge/types.ts:81-115
-export type BridgeConfig = {
-  dir: string            // 工作目录
-  machineName: string    // 机器标识（用于 claude.ai 显示）
-  branch: string         // 当前 git 分支
-  gitRepoUrl: string | null
-  maxSessions: number    // 最大并发会话数
-  spawnMode: SpawnMode   // 会话隔离模式
-  bridgeId: string       // 客户端生成的 UUID
-  workerType: string     // 工作类型标识
-  // ...
-}</code></pre>
-
-<h3>SpawnMode：会话隔离模式</h3>
-
+<h3 id="spawnmode">SpawnMode：会话隔离模式</h3>
 <p>三种会话工作目录策略，通过 <code>SpawnMode</code> 类型控制：</p>
-
-<pre><code class="language-typescript">// src/bridge/types.ts:63-69
-export type SpawnMode = 'single-session' | 'worktree' | 'same-dir'</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/bridge/types.ts:63-69</span>
+<span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">SpawnMode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;single-session&#39;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="s1">&#39;worktree&#39;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="s1">&#39;same-dir&#39;</span>
+</code></pre></div>
 
 <ul>
 <li><code>single-session</code>：单会话模式，CLI 在会话结束后退出</li>
 <li><code>worktree</code>：每个会话获得独立的 git worktree（最强隔离）</li>
 <li><code>same-dir</code>：多个会话共享同一目录（可能互相干扰）</li>
 </ul>
-
-<h3>WorkSecret：加密的工作凭据</h3>
-
+<h3 id="worksecret">WorkSecret：加密的工作凭据</h3>
 <p>服务端派发的工作任务中包含一个 base64url 编码的 <code>WorkSecret</code>，其中包含该会话的 OAuth token、API 基础 URL、MCP 配置等：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/bridge/types.ts:33-51</span>
+<span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">WorkSecret</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">version</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span>
+<span class="w">  </span><span class="nx">session_ingress_token</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w">   </span><span class="c1">// 会话接入 token</span>
+<span class="w">  </span><span class="nx">api_base_url</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
+<span class="w">  </span><span class="nx">sources</span><span class="o">:</span><span class="w"> </span><span class="kt">Array</span><span class="o">&lt;</span><span class="p">{</span><span class="w"> </span><span class="kr">type</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span><span class="w"> </span><span class="nx">git_info</span><span class="o">?:</span><span class="w"> </span><span class="p">{...}</span><span class="w"> </span><span class="p">}</span><span class="o">&gt;</span>
+<span class="w">  </span><span class="nx">auth</span><span class="o">:</span><span class="w"> </span><span class="kt">Array</span><span class="o">&lt;</span><span class="p">{</span><span class="w"> </span><span class="kr">type</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span><span class="w"> </span><span class="nx">token</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="p">}</span><span class="o">&gt;</span>
+<span class="w">  </span><span class="nx">mcp_config?</span><span class="o">:</span><span class="w"> </span><span class="kt">unknown</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="w">     </span><span class="c1">// 可携带 MCP 服务器配置</span>
+<span class="w">  </span><span class="nx">environment_variables?</span><span class="o">:</span><span class="w"> </span><span class="kt">Record</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="kt">string</span><span class="o">&gt;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">  </span><span class="nx">use_code_sessions?</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="w">     </span><span class="c1">// v2 路径标志</span>
+<span class="p">}</span>
+</code></pre></div>
 
-<pre><code class="language-typescript">// src/bridge/types.ts:33-51
-export type WorkSecret = {
-  version: number
-  session_ingress_token: string   // 会话接入 token
-  api_base_url: string
-  sources: Array<{ type: string; git_info?: {...} }>
-  auth: Array<{ type: string; token: string }>
-  mcp_config?: unknown | null     // 可携带 MCP 服务器配置
-  environment_variables?: Record<string, string> | null
-  use_code_sessions?: boolean     // v2 路径标志
-}</code></pre>
-
-<h2>8.7 Env-less Bridge（remoteBridgeCore.ts）</h2>
-
-<code>src/bridge/remoteBridgeCore.ts</code> 实现了一种更轻量的 Bridge 变体——"无 Environments API 层"（Env-less）。
-
-<h3>架构对比</h3>
-
-<pre><code class="language-">v1 (env-based) 流程:
+<h2 id="87-env-less-bridgeremotebridgecorets">8.7 Env-less Bridge（remoteBridgeCore.ts）</h2>
+<p><code>src/bridge/remoteBridgeCore.ts</code> 实现了一种更轻量的 Bridge 变体——"无 Environments API 层"（Env-less）。</p>
+<h3 id="_5">架构对比</h3>
+<div class="codehilite"><pre><span></span><code>v1 (env-based) 流程:
   1. POST /v1/environments/bridge  → 注册环境，获取 environment_id
   2. GET  .../work/poll            → 长轮询
   3. POST .../work/{id}/ack        → 确认任务
@@ -400,108 +474,101 @@ export type WorkSecret = {
   5. POST .../work/{id}/heartbeat  → 定期心跳
   6. DELETE .../environments/...   → 注销
 
-<p>v2 (env-less) 流程:
+v2 (env-less) 流程:
   1. POST /v1/code/sessions        → 创建会话
   2. POST /v1/code/sessions/{id}/bridge → 获取 worker_jwt + worker_epoch
   3. createV2ReplTransport(jwt, epoch)  → SSE + CCRClient
-  4. 定期刷新 /bridge 凭证（proactive_refresh）</code></pre></p>
+  4. 定期刷新 /bridge 凭证（proactive_refresh）
+</code></pre></div>
 
 <p>注释中对这个简化的意义有详细说明：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/bridge/remoteBridgeCore.ts:14-28</span>
+<span class="c1">// No register/poll/ack/stop/heartbeat/deregister environment lifecycle.</span>
+<span class="c1">// The Environments API historically existed because CCR&#39;s /worker/*</span>
+<span class="c1">// endpoints required a session_id+role=worker JWT that only the work-dispatch</span>
+<span class="c1">// layer could mint. Server PR #292605 adds the /bridge endpoint as a direct</span>
+<span class="c1">// OAuth→worker_jwt exchange, making the env layer optional for REPL sessions.</span>
+</code></pre></div>
 
-<pre><code class="language-typescript">// src/bridge/remoteBridgeCore.ts:14-28
-// No register/poll/ack/stop/heartbeat/deregister environment lifecycle.
-// The Environments API historically existed because CCR's /worker/*
-// endpoints required a session_id+role=worker JWT that only the work-dispatch
-// layer could mint. Server PR #292605 adds the /bridge endpoint as a direct
-// OAuth→worker_jwt exchange, making the env layer optional for REPL sessions.</code></pre>
-
-<h2>8.8 会话执行器（sessionRunner.ts）</h2>
-
+<h2 id="88-sessionrunnerts">8.8 会话执行器（sessionRunner.ts）</h2>
 <p>在多会话模式（<code>worktree</code>、<code>same-dir</code>）下，Bridge 的环境侧（<code>remote-control</code>）需要动态孵化子 CLI 进程来执行每个会话。这个逻辑在 <code>src/bridge/sessionRunner.ts</code> 中实现。</p>
-
 <p>子进程通过标准的 <code>spawn()</code> 系统调用启动，CLI 在子进程模式下通过 <code>--sdk-url</code> 参数接收会话接入 URL：</p>
-
-<pre><code class="language-typescript">// src/bridge/sessionRunner.ts:45-43（类型定义）
-export type PermissionRequest = {
-  type: 'control_request'
-  request_id: string
-  request: {
-    subtype: 'can_use_tool'    // 特定工具调用权限请求
-    tool_name: string
-    input: Record<string, unknown>
-    tool_use_id: string
-  }
-}</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/bridge/sessionRunner.ts:45-43（类型定义）</span>
+<span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">PermissionRequest</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kr">type</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;control_request&#39;</span>
+<span class="w">  </span><span class="nx">request_id</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
+<span class="w">  </span><span class="nx">request</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">subtype</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;can_use_tool&#39;</span><span class="w">    </span><span class="c1">// 特定工具调用权限请求</span>
+<span class="w">    </span><span class="nx">tool_name</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
+<span class="w">    </span><span class="nx">input</span><span class="o">:</span><span class="w"> </span><span class="kt">Record</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">unknown</span><span class="o">&gt;</span>
+<span class="w">    </span><span class="nx">tool_use_id</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p>当子会话需要用户审批工具调用时，<code>control_request</code> 消息通过 Bridge 传输到 claude.ai，用户在网页上点击允许/拒绝，响应通过 <code>sendPermissionResponseEvent</code> 反向传回。</p>
+<h2 id="89">8.9 会话生命周期与健康管理</h2>
+<div class="codehilite"><pre><span></span><code><span class="n">sequenceDiagram</span>
+<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">CLI</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="err">本地</span><span class="w"> </span><span class="n">CLI</span>
+<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">API</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="n">Environments</span><span class="w"> </span><span class="n">API</span>
+<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">CCR</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="n">Session</span><span class="w"> </span><span class="n">Ingress</span>
 
-<h2>8.9 会话生命周期与健康管理</h2>
+<span class="w">    </span><span class="n">CLI</span><span class="o">-&gt;&gt;</span><span class="n">API</span><span class="o">:</span><span class="w"> </span><span class="n">POST</span><span class="w"> </span><span class="o">/</span><span class="n">v1</span><span class="o">/</span><span class="n">environments</span><span class="o">/</span><span class="n">bridge</span><span class="err">（注册）</span>
+<span class="w">    </span><span class="n">API</span><span class="o">--&gt;&gt;</span><span class="n">CLI</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="n">environment_id</span><span class="p">,</span><span class="w"> </span><span class="n">environment_secret</span><span class="p">}</span>
 
-<pre><code class="language-mermaid">sequenceDiagram
-    participant CLI as 本地 CLI
-    participant API as Environments API
-    participant CCR as Session Ingress
+<span class="w">    </span><span class="nf">loop</span><span class="w"> </span><span class="err">轮询循环</span>
+<span class="w">        </span><span class="n">CLI</span><span class="o">-&gt;&gt;</span><span class="n">API</span><span class="o">:</span><span class="w"> </span><span class="n">GET</span><span class="w"> </span><span class="p">...</span><span class="o">/</span><span class="n">work</span><span class="o">/</span><span class="n">poll</span>
+<span class="w">        </span><span class="n">API</span><span class="o">--&gt;&gt;</span><span class="n">CLI</span><span class="o">:</span><span class="w"> </span><span class="n">WorkResponse</span><span class="err">（或空）</span>
+<span class="w">    </span><span class="kd">end</span>
 
-<p>CLI->>API: POST /v1/environments/bridge（注册）
-    API-->>CLI: {environment_id, environment_secret}</p>
+<span class="w">    </span><span class="n">CLI</span><span class="o">-&gt;&gt;</span><span class="n">API</span><span class="o">:</span><span class="w"> </span><span class="n">POST</span><span class="w"> </span><span class="p">...</span><span class="o">/</span><span class="n">work</span><span class="o">/</span><span class="p">{</span><span class="n">id</span><span class="p">}</span><span class="o">/</span><span class="n">ack</span><span class="err">（确认）</span>
+<span class="w">    </span><span class="n">CLI</span><span class="o">-&gt;&gt;</span><span class="n">CCR</span><span class="o">:</span><span class="w"> </span><span class="n">WebSocket</span><span class="o">/</span><span class="n">SSE</span><span class="w"> </span><span class="err">连接（传输层）</span>
 
-<p>loop 轮询循环
-        CLI->>API: GET .../work/poll
-        API-->>CLI: WorkResponse（或空）
-    end</p>
+<span class="w">    </span><span class="nf">loop</span><span class="w"> </span><span class="err">心跳循环（每</span><span class="w"> </span><span class="n">N</span><span class="w"> </span><span class="err">秒）</span>
+<span class="w">        </span><span class="n">CLI</span><span class="o">-&gt;&gt;</span><span class="n">API</span><span class="o">:</span><span class="w"> </span><span class="n">POST</span><span class="w"> </span><span class="p">...</span><span class="o">/</span><span class="n">work</span><span class="o">/</span><span class="p">{</span><span class="n">id</span><span class="p">}</span><span class="o">/</span><span class="n">heartbeat</span>
+<span class="w">        </span><span class="n">API</span><span class="o">--&gt;&gt;</span><span class="n">CLI</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="n">lease_extended</span><span class="p">,</span><span class="w"> </span><span class="n">state</span><span class="p">}</span>
+<span class="w">    </span><span class="kd">end</span>
 
-<p>CLI->>API: POST .../work/{id}/ack（确认）
-    CLI->>CCR: WebSocket/SSE 连接（传输层）</p>
-
-<p>loop 心跳循环（每 N 秒）
-        CLI->>API: POST .../work/{id}/heartbeat
-        API-->>CLI: {lease_extended, state}
-    end</p>
-
-<p>CLI->>CCR: 发送 result 消息（会话结束）
-    CLI->>API: DELETE /v1/environments/bridge/{id}（注销）</code></pre></p>
+<span class="w">    </span><span class="n">CLI</span><span class="o">-&gt;&gt;</span><span class="n">CCR</span><span class="o">:</span><span class="w"> </span><span class="err">发送</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="err">消息（会话结束）</span>
+<span class="w">    </span><span class="n">CLI</span><span class="o">-&gt;&gt;</span><span class="n">API</span><span class="o">:</span><span class="w"> </span><span class="n">DELETE</span><span class="w"> </span><span class="o">/</span><span class="n">v1</span><span class="o">/</span><span class="n">environments</span><span class="o">/</span><span class="n">bridge</span><span class="o">/</span><span class="p">{</span><span class="n">id</span><span class="p">}</span><span class="err">（注销）</span>
+</code></pre></div>
 
 <p>心跳机制是保持会话租约的关键。<code>heartbeatWork</code> API 使用 <code>session_ingress_token</code>（JWT，不访问数据库）而非 <code>environment_secret</code>，从而避免对数据库的高频访问：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/bridge/bridgeApi.ts:387-417</span>
+<span class="k">async</span><span class="w"> </span><span class="nx">heartbeatWork</span><span class="p">(</span>
+<span class="w">  </span><span class="nx">environmentId</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">workId</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">sessionToken</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span><span class="w">  </span><span class="c1">// JWT token，非 environment_secret</span>
+<span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="p">{</span><span class="w"> </span><span class="nx">lease_extended</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="p">;</span><span class="w"> </span><span class="nx">state</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="p">}</span><span class="o">&gt;</span>
+</code></pre></div>
 
-<pre><code class="language-typescript">// src/bridge/bridgeApi.ts:387-417
-async heartbeatWork(
-  environmentId: string,
-  workId: string,
-  sessionToken: string,  // JWT token，非 environment_secret
-): Promise<{ lease_extended: boolean; state: string }></code></pre>
-
-<h2>8.10 直连服务（server/ 目录）</h2>
-
-<code>src/server/</code> 目录下有三个文件，实现了一个更轻量的<strong>直连模式</strong>（Direct Connect）：
-
+<h2 id="810-server">8.10 直连服务（server/ 目录）</h2>
+<p><code>src/server/</code> 目录下有三个文件，实现了一个更轻量的<strong>直连模式</strong>（Direct Connect）：</p>
 <ul>
 <li><code>directConnectManager.ts</code>：WebSocket 直连会话管理</li>
 <li><code>createDirectConnectSession.ts</code>：创建直连会话</li>
 <li><code>types.ts</code>：类型定义</li>
 </ul>
-
 <p>与 Bridge 的"云端中转"不同，直连模式通过 WebSocket 直接连接到会话，配置包含：</p>
-
-<pre><code class="language-typescript">// src/server/directConnectManager.ts:13-18
-export type DirectConnectConfig = {
-  serverUrl: string
-  sessionId: string
-  wsUrl: string
-  authToken?: string
-}</code></pre>
+<div class="codehilite"><pre><span></span><code><span class="c1">// src/server/directConnectManager.ts:13-18</span>
+<span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">DirectConnectConfig</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">serverUrl</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
+<span class="w">  </span><span class="nx">sessionId</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
+<span class="w">  </span><span class="nx">wsUrl</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
+<span class="w">  </span><span class="nx">authToken?</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p>这是一个更低延迟的通信路径，适合 IDE 插件等本地集成场景（如 VS Code、JetBrains 扩展），它们可以与 CLI 建立直接的 WebSocket 连接，无需经过 Anthropic 云端中转。</p>
-
-<h2>8.11 小结</h2>
-
+<h2 id="811">8.11 小结</h2>
 <p>Bridge 系统是 Claude Code 从单机 CLI 工具向云端协作平台演进的核心基础设施。其设计体现了几个工程亮点：</p>
-
-<p>1. <strong>渐进式传输升级</strong>：v1（WS+POST）到 v2（SSE+批量上传）的演进保留了完整的向后兼容
-2. <strong>回弹设计</strong>：序列号续传、心跳保活、OAuth 自动刷新，保证了不稳定网络下的可靠性
-3. <strong>安全防御</strong>：ID 路径注入校验、功能门控分层、设备信任令牌，多层防护
-4. <strong>可观测性</strong>：详尽的 debug 日志、活动环形缓冲区（最近 10 条）、诊断日志接口
-5. <strong>最小化耦合</strong>：<code>initReplBridge</code> 和 <code>initBridgeCore</code> 的拆分，避免了命令注册表等重型模块进入 Agent SDK 打包产物</p>
-
+<ol>
+<li><strong>渐进式传输升级</strong>：v1（WS+POST）到 v2（SSE+批量上传）的演进保留了完整的向后兼容</li>
+<li><strong>回弹设计</strong>：序列号续传、心跳保活、OAuth 自动刷新，保证了不稳定网络下的可靠性</li>
+<li><strong>安全防御</strong>：ID 路径注入校验、功能门控分层、设备信任令牌，多层防护</li>
+<li><strong>可观测性</strong>：详尽的 debug 日志、活动环形缓冲区（最近 10 条）、诊断日志接口</li>
+<li><strong>最小化耦合</strong>：<code>initReplBridge</code> 和 <code>initBridgeCore</code> 的拆分，避免了命令注册表等重型模块进入 Agent SDK 打包产物</li>
+</ol>
 <p>理解 Bridge 架构，对于理解 Claude Code 如何实现跨设备、跨平台的协作工作流至关重要。</p>
             </article>
             

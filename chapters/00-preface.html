@@ -7,7 +7,11 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.1/github-markdown.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script>hljs.highlightAll();</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.0/mermaid.min.js"></script>
+    <script>
+        hljs.highlightAll();
+        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+    </script>
     <style>
         body {
             margin: 0;
@@ -20,6 +24,9 @@
             color: white;
             padding: 15px 0;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
         }
         .nav-container {
             max-width: 1200px;
@@ -33,9 +40,10 @@
             color: white;
             text-decoration: none;
             font-weight: 500;
+            transition: opacity 0.3s;
         }
         .nav a:hover {
-            text-decoration: underline;
+            opacity: 0.8;
         }
         .container {
             max-width: 1200px;
@@ -51,8 +59,41 @@
         .markdown-body {
             box-sizing: border-box;
             min-width: 200px;
-            max-width: 980px;
+            max-width: 100%;
             margin: 0 auto;
+        }
+        .markdown-body pre {
+            background: #f6f8fa;
+            border-radius: 6px;
+            padding: 16px;
+        }
+        .markdown-body code {
+            background: #f6f8fa;
+            padding: 0.2em 0.4em;
+            border-radius: 3px;
+            font-size: 85%;
+        }
+        .markdown-body pre code {
+            background: transparent;
+            padding: 0;
+        }
+        .markdown-body table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 20px 0;
+        }
+        .markdown-body table th,
+        .markdown-body table td {
+            border: 1px solid #dfe2e5;
+            padding: 8px 13px;
+        }
+        .markdown-body table th {
+            background: #f6f8fa;
+            font-weight: 600;
+        }
+        .mermaid {
+            text-align: center;
+            margin: 30px 0;
         }
         .pagination {
             display: flex;
@@ -80,6 +121,12 @@
         .pagination .next::after {
             content: " →";
         }
+        blockquote {
+            border-left: 4px solid #667eea;
+            padding-left: 20px;
+            color: #6a737d;
+            margin: 20px 0;
+        }
         @media (max-width: 768px) {
             .content {
                 padding: 30px 20px;
@@ -91,39 +138,30 @@
     <div class="nav">
         <div class="nav-container">
             <a href="../index.html">📘 解密 Claude Code</a>
-            <a href="../index.html#toc">目录</a>
+            <a href="../index.html">目录</a>
         </div>
     </div>
     
     <div class="container">
         <div class="content">
             <article class="markdown-body">
-<h1>前言——一次意外的源码泄露</h1>
-
-<p>> 2026年3月31日，Anthropic 的 Claude Code CLI 因 npm 包中遗留了 source map 文件，完整的 TypeScript 源码意外暴露在公众面前。这本书，就是对那份源码的系统性解读。</p>
-
-<p>---</p>
-
-<h2>事件始末</h2>
-
+<h1 id="_1">前言——一次意外的源码泄露</h1>
+<blockquote>
+<p>2026年3月31日，Anthropic 的 Claude Code CLI 因 npm 包中遗留了 source map 文件，完整的 TypeScript 源码意外暴露在公众面前。这本书，就是对那份源码的系统性解读。</p>
+</blockquote>
+<hr />
+<h2 id="_2">事件始末</h2>
 <p>2026年3月31日，安全研究员 Chaofan Shou（Twitter 账号 @Fried_rice）发布了一条推文：</p>
-
-<p>> <em>"Claude code source code has been leaked via a map file in their npm registry!"</em>
->
-> — [@Fried_rice, 2026-03-31](https://x.com/Fried_rice/status/2038894956459290963)</p>
-
+<blockquote>
+<p><em>"Claude code source code has been leaked via a map file in their npm registry!"</em></p>
+<p>— <a href="https://x.com/Fried_rice/status/2038894956459290963">@Fried_rice, 2026-03-31</a></p>
+</blockquote>
 <p>这条推文随即在开发者社区引发广泛关注。事件的技术细节并不复杂：Anthropic 在发布 Claude Code 的 npm 包时，意外地在构建产物中保留了 <code>.map</code>（source map）文件。Source map 是 JavaScript 构建工具链中用于调试的映射文件，它保存了编译后代码与原始源码之间的对应关系。更关键的是，该 <code>.map</code> 文件包含了一个指向完整未混淆 TypeScript 源码压缩包的 URL，而这个 URL 指向的是 Anthropic 的 R2 对象存储桶，任何人都可以直接下载。</p>
-
 <p>于是，在短短数小时内，完整的 Claude Code 源代码在互联网上广泛流传。</p>
-
 <p>这并非黑客入侵，也没有任何服务器被攻破。这是一次典型的"供应链意外泄露"——一个在构建配置中被遗忘的开关，让商业软件的核心代码彻底裸露。</p>
-
-<p>---</p>
-
-<h2>Claude Code 是什么</h2>
-
+<hr />
+<h2 id="claude-code">Claude Code 是什么</h2>
 <p>Claude Code 是 Anthropic 推出的官方命令行工具（CLI），让开发者可以直接在终端中与 Claude 模型交互，完成软件工程任务。它不仅仅是一个聊天界面的命令行版本，而是一个深度集成到开发工作流中的 AI 编程助手：</p>
-
 <ul>
 <li><strong>编辑文件</strong>：直接读取、修改、创建代码文件</li>
 <li><strong>执行命令</strong>：在 shell 中运行任意命令</li>
@@ -132,81 +170,129 @@
 <li><strong>多智能体协作</strong>：生成子 Agent 并行处理复杂任务</li>
 <li><strong>IDE 集成</strong>：通过 Bridge 系统连接 VS Code 和 JetBrains</li>
 </ul>
-
 <p>Claude Code 的定位是"在终端里工作的编程伙伴"，它的设计哲学是让 AI 能够访问开发者本地环境中的一切——文件系统、命令行、版本控制——而不是局限在一个沙盒化的代码补全框架里。</p>
-
-<p>---</p>
-
-<h2>代码库规模</h2>
-
+<hr />
+<h2 id="_3">代码库规模</h2>
 <p>根据 README 及实际统计数据，泄露的源码规模相当可观：</p>
-
-<p>| 指标 | 数值 |
-|------|------|
-| 总文件数 | ~1,900 个文件 |
-| 总代码行数 | 512,000+ 行 |
-| TypeScript 源文件数 | 1,884 个 <code>.ts</code> / <code>.tsx</code> 文件 |
-| 最大单文件 | <code>main.tsx</code>（4,683 行）|
-| 核心引擎文件 | <code>QueryEngine.ts</code>（1,295 行）|</p>
-
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>数值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>总文件数</td>
+<td>~1,900 个文件</td>
+</tr>
+<tr>
+<td>总代码行数</td>
+<td>512,000+ 行</td>
+</tr>
+<tr>
+<td>TypeScript 源文件数</td>
+<td>1,884 个 <code>.ts</code> / <code>.tsx</code> 文件</td>
+</tr>
+<tr>
+<td>最大单文件</td>
+<td><code>main.tsx</code>（4,683 行）</td>
+</tr>
+<tr>
+<td>核心引擎文件</td>
+<td><code>QueryEngine.ts</code>（1,295 行）</td>
+</tr>
+</tbody>
+</table>
 <p>这不是一个小型工具的代码量。相比之下，许多知名开源项目的核心代码库也不过如此规模。这个数字揭示了 Claude Code 背后的工程投入：它是一个功能完整、经过生产验证的商业软件产品。</p>
-
 <p>顶层目录结构如下：</p>
+<div class="codehilite"><pre><span></span><code><span class="n">src</span><span class="o">/</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">main</span><span class="o">.</span><span class="n">tsx</span><span class="w">          </span><span class="c1"># 入口（Commander.js CLI 解析 + React/Ink 渲染器初始化）</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">QueryEngine</span><span class="o">.</span><span class="n">ts</span><span class="w">    </span><span class="c1"># LLM 查询引擎（核心 API 调用层）</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">Tool</span><span class="o">.</span><span class="n">ts</span><span class="w">           </span><span class="c1"># 工具类型定义基础</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">commands</span><span class="o">.</span><span class="n">ts</span><span class="w">       </span><span class="c1"># 斜杠命令注册表</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">tools</span><span class="o">.</span><span class="n">ts</span><span class="w">          </span><span class="c1"># 工具注册表</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">context</span><span class="o">.</span><span class="n">ts</span><span class="w">        </span><span class="c1"># 系统与用户上下文收集</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">cost</span><span class="o">-</span><span class="n">tracker</span><span class="o">.</span><span class="n">ts</span><span class="w">   </span><span class="c1"># Token 费用追踪</span>
+<span class="err">│</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">commands</span><span class="o">/</span><span class="w">         </span><span class="c1"># 斜杠命令实现（约 50 个）</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">tools</span><span class="o">/</span><span class="w">            </span><span class="c1"># Agent 工具实现（约 40 个）</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">components</span><span class="o">/</span><span class="w">       </span><span class="c1"># Ink UI 组件（约 140 个）</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">hooks</span><span class="o">/</span><span class="w">            </span><span class="c1"># React Hooks</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">services</span><span class="o">/</span><span class="w">         </span><span class="c1"># 外部服务集成</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">screens</span><span class="o">/</span><span class="w">          </span><span class="c1"># 全屏 UI（Doctor、REPL、Resume）</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">bridge</span><span class="o">/</span><span class="w">           </span><span class="c1"># IDE 集成桥接层</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">coordinator</span><span class="o">/</span><span class="w">      </span><span class="c1"># 多 Agent 协调器</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">plugins</span><span class="o">/</span><span class="w">          </span><span class="c1"># 插件系统</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">skills</span><span class="o">/</span><span class="w">           </span><span class="c1"># 技能系统</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">state</span><span class="o">/</span><span class="w">            </span><span class="c1"># 状态管理</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">memdir</span><span class="o">/</span><span class="w">           </span><span class="c1"># 持久化记忆目录</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">tasks</span><span class="o">/</span><span class="w">            </span><span class="c1"># 任务管理</span>
+<span class="err">└──</span><span class="w"> </span><span class="o">...</span><span class="w">               </span><span class="c1"># 其他子系统</span>
+</code></pre></div>
 
-<pre><code class="language-">src/
-├── main.tsx          # 入口（Commander.js CLI 解析 + React/Ink 渲染器初始化）
-├── QueryEngine.ts    # LLM 查询引擎（核心 API 调用层）
-├── Tool.ts           # 工具类型定义基础
-├── commands.ts       # 斜杠命令注册表
-├── tools.ts          # 工具注册表
-├── context.ts        # 系统与用户上下文收集
-├── cost-tracker.ts   # Token 费用追踪
-│
-├── commands/         # 斜杠命令实现（约 50 个）
-├── tools/            # Agent 工具实现（约 40 个）
-├── components/       # Ink UI 组件（约 140 个）
-├── hooks/            # React Hooks
-├── services/         # 外部服务集成
-├── screens/          # 全屏 UI（Doctor、REPL、Resume）
-├── bridge/           # IDE 集成桥接层
-├── coordinator/      # 多 Agent 协调器
-├── plugins/          # 插件系统
-├── skills/           # 技能系统
-├── state/            # 状态管理
-├── memdir/           # 持久化记忆目录
-├── tasks/            # 任务管理
-└── ...               # 其他子系统</code></pre>
-
-<p>---</p>
-
-<h2>技术栈一览</h2>
-
+<hr />
+<h2 id="_4">技术栈一览</h2>
 <p>Claude Code 的技术选型颇具特色：</p>
-
-<p>| 层次 | 技术 |
-|------|------|
-| 运行时 | [Bun](https://bun.sh)（非 Node.js） |
-| 语言 | TypeScript（strict 模式） |
-| 终端 UI | React + [Ink](https://github.com/vadimdemedes/ink) |
-| CLI 解析 | Commander.js（extra-typings） |
-| Schema 验证 | Zod v4 |
-| 代码搜索 | ripgrep |
-| 协议 | MCP SDK、LSP |
-| API | Anthropic SDK |
-| 遥测 | OpenTelemetry + gRPC |
-| 特性开关 | GrowthBook |
-| 认证 | OAuth 2.0、JWT、macOS Keychain |</p>
-
+<table>
+<thead>
+<tr>
+<th>层次</th>
+<th>技术</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>运行时</td>
+<td><a href="https://bun.sh">Bun</a>（非 Node.js）</td>
+</tr>
+<tr>
+<td>语言</td>
+<td>TypeScript（strict 模式）</td>
+</tr>
+<tr>
+<td>终端 UI</td>
+<td>React + <a href="https://github.com/vadimdemedes/ink">Ink</a></td>
+</tr>
+<tr>
+<td>CLI 解析</td>
+<td>Commander.js（extra-typings）</td>
+</tr>
+<tr>
+<td>Schema 验证</td>
+<td>Zod v4</td>
+</tr>
+<tr>
+<td>代码搜索</td>
+<td>ripgrep</td>
+</tr>
+<tr>
+<td>协议</td>
+<td>MCP SDK、LSP</td>
+</tr>
+<tr>
+<td>API</td>
+<td>Anthropic SDK</td>
+</tr>
+<tr>
+<td>遥测</td>
+<td>OpenTelemetry + gRPC</td>
+</tr>
+<tr>
+<td>特性开关</td>
+<td>GrowthBook</td>
+</tr>
+<tr>
+<td>认证</td>
+<td>OAuth 2.0、JWT、macOS Keychain</td>
+</tr>
+</tbody>
+</table>
 <p>选择 Bun 而非 Node.js 是一个有意为之的决策：Bun 提供了更快的启动速度（对 CLI 工具至关重要）和内置的 <code>bun:bundle</code> 特性开关系统，后者被 Claude Code 大量用于死代码消除。</p>
-
-<p>---</p>
-
-<h2>这本书会讲什么</h2>
-
+<hr />
+<h2 id="_5">这本书会讲什么</h2>
 <p>本书面向对 AI 工程、CLI 工具设计或大型 TypeScript 项目架构感兴趣的开发者。我们将系统性地解读这份意外公开的源码，从宏观架构到微观实现，还原一个商业 AI 编程助手的完整工程图景。</p>
-
-<strong>本书结构如下：</strong>
-
+<p><strong>本书结构如下：</strong></p>
 <ul>
 <li><strong>第 00 章（本章）</strong>：泄露事件背景与代码库总览</li>
 <li><strong>第 01 章：架构全景图</strong> — 高层架构、子系统关系、入口点分析</li>
@@ -222,22 +308,16 @@
 <li><strong>第 11 章：特色功能拾遗</strong> — 任务管理、Notebook 支持、成本追踪等</li>
 <li><strong>第 12 章：工程启示录</strong> — 架构反思与工程实践总结</li>
 </ul>
-
-<p>---</p>
-
-<h2>阅读说明</h2>
-
+<hr />
+<h2 id="_6">阅读说明</h2>
 <p>本书所有代码引用均来自泄露的源码，文件路径以 <code>src/</code> 为根。行号基于原始文件，可能因后续版本变化而偏移。</p>
-
 <p>代码块中的文件路径格式为：</p>
-
-<pre><code class="language-">src/文件路径:行号</code></pre>
+<div class="codehilite"><pre><span></span><code>src/文件路径:行号
+</code></pre></div>
 
 <p>所有内容均以分析和教育为目的。原始源码版权归 Anthropic 所有。</p>
-
-<p>---</p>
-
-<em>让我们翻开这份意外的礼物，看看世界上最先进的 AI 编程助手，是如何被构建出来的。</em>
+<hr />
+<p><em>让我们翻开这份意外的礼物，看看世界上最先进的 AI 编程助手，是如何被构建出来的。</em></p>
             </article>
             
             <div class="pagination">
