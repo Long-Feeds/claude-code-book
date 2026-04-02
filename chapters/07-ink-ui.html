@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>终端 UI——React 在 CLI 中的实践 - 解密 Claude Code</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.1/github-markdown.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script>hljs.highlightAll();</script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #f6f8fa;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+        }
+        .nav {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .nav a {
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .nav a:hover {
+            text-decoration: underline;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        .content {
+            background: white;
+            padding: 60px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .markdown-body {
+            box-sizing: border-box;
+            min-width: 200px;
+            max-width: 980px;
+            margin: 0 auto;
+        }
+        .pagination {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 60px;
+            padding-top: 30px;
+            border-top: 1px solid #e1e4e8;
+        }
+        .pagination a {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+        .pagination a:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+        }
+        .pagination .prev::before {
+            content: "← ";
+        }
+        .pagination .next::after {
+            content: " →";
+        }
+        @media (max-width: 768px) {
+            .content {
+                padding: 30px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <div class="nav-container">
+            <a href="../index.html">📘 解密 Claude Code</a>
+            <a href="../index.html#toc">目录</a>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="content">
+            <article class="markdown-body">
+<h1>第七章：终端 UI——React 在 CLI 中的实践</h1>
+
+<p>> Claude Code 将 React 带入了终端，在命令行界面中实现了组件化、声明式的 UI 编程模型。这不是简单地使用某个 Ink 库，而是对 Ink 进行了深度定制和重写：自定义 reconciler、双缓冲帧渲染、Yoga 布局引擎、Vim 模式输入、可配置的键位绑定系统……本章从 <code>src/ink/</code> 目录出发，逐层解析 React 组件如何最终变成终端上的字符。</p>
+
+<p>---</p>
+
+<h2>7.1 入口：从 main.tsx 到 Ink 实例</h2>
+
+<code>src/main.tsx</code> 是整个 CLI 的启动点。与浏览器端 React 调用 <code>ReactDOM.render()</code> 类似，Claude Code 使用 Ink 的 <code>render()</code> 函数将 React 树挂载到终端。<code>main.tsx</code> 第 34 行导入了类型定义：
+
+<pre><code class="language-typescript">// src/main.tsx:34
+import type { Root } from './ink.js';</code></pre>
+
+<p>实际的渲染启动封装在 <code>src/interactiveHelpers.ts</code> 的 <code>renderAndRun</code> 函数中，它负责创建 Ink 实例并将顶层组件树（<code><REPL></code> 或各种对话框）注入终端。</p>
+
+<code>src/ink.js</code> 是对外暴露的 Ink API 汇总文件，重新导出了 <code>Box</code>、<code>Text</code>、<code>useInput</code>、<code>useStdin</code>、<code>useTheme</code> 等核心接口，供所有组件使用。
+
+<p>---</p>
+
+<h2>7.2 Ink 的核心：一个定制的 React Renderer</h2>
+
+<p>Claude Code 并未使用 npm 上的标准 <code>ink</code> 包，而是在 <code>src/ink/</code> 目录中维护了一套<strong>完全重写的 Ink 实现</strong>。核心文件是 <code>src/ink/ink.tsx</code>。</p>
+
+<h3>Ink 类</h3>
+
+<code>src/ink/ink.tsx</code> 第 76 行定义了核心的 <code>Ink</code> 类：
+
+<pre><code class="language-typescript">export default class Ink {
+  private readonly container: FiberRoot;  // React Fiber 根节点
+  private rootNode: dom.DOMElement;       // 自定义 DOM 根节点
+  readonly focusManager: FocusManager;    // 焦点管理
+  private renderer: Renderer;             // 字符渲染器
+  private readonly stylePool: StylePool;  // 样式对象池
+  private charPool: CharPool;             // 字符对象池
+  private hyperlinkPool: HyperlinkPool;   // 超链接对象池
+  private frontFrame: Frame;              // 前缓冲区
+  private backFrame: Frame;               // 后缓冲区
+  // ...
+}</code></pre>
+
+<p>其中<strong>双缓冲帧（front/back frame）</strong>是性能优化的关键：每次渲染先写入 backFrame，然后与 frontFrame 做 diff，只把变化的单元格输出到终端。这避免了全屏刷新，大幅减少写入量。</p>
+
+<h3>渲染调度</h3>
+
+<p>渲染不是每次状态变化都立即触发，而是经过节流（<code>ink.tsx:212-216</code>）：</p>
+
+<pre><code class="language-typescript">const deferredRender = (): void => queueMicrotask(this.onRender);
+this.scheduleRender = throttle(deferredRender, FRAME_INTERVAL_MS, {
+  leading: true,
+  trailing: true
+});</code></pre>
+
+<p>帧间隔来自 <code>src/ink/constants.ts:2</code>：</p>
+
+<pre><code class="language-typescript">export const FRAME_INTERVAL_MS = 16  // ~60fps</code></pre>
+
+<p>渲染使用 <code>queueMicrotask</code> 延迟到当前微任务队列末尾，这确保了 React 的 <code>useLayoutEffect</code> 在 <code>onRender</code> 触发前已经完成（比如 <code>useDeclaredCursor</code> 更新光标位置），避免光标跟踪落后一帧的问题。</p>
+
+<h3>React Fiber 容器</h3>
+
+<p>Ink 类在构造函数中创建 React Fiber 容器（<code>ink.tsx:262-269</code>）：</p>
+
+<pre><code class="language-typescript">this.container = reconciler.createContainer(
+  this.rootNode,
+  ConcurrentRoot,  // 使用 React 18 并发模式
+  null,
+  false,
+  null,
+  'id',
+  noop, noop, noop, noop
+);</code></pre>
+
+<p>使用了 React 的 <strong>Concurrent Root</strong>（并发模式），这意味着 Claude Code 的 UI 支持时间切片和 Suspense 等现代 React 特性。</p>
+
+<p>---</p>
+
+<h2>7.3 自定义 Reconciler</h2>
+
+<code>src/ink/reconciler.ts</code> 是整个渲染引擎的心脏，它使用 <code>react-reconciler</code> 包构建了一个非浏览器 DOM 的自定义渲染目标。
+
+<pre><code class="language-typescript">// src/ink/reconciler.ts:224-239
+const reconciler = createReconciler<
+  ElementNames,   // 元素类型名称
+  Props,
+  DOMElement,     // 容器类型
+  DOMElement,     // 实例类型
+  TextNode,
+  // ...
+>({
+  getRootHostContext: () => ({ isInsideText: false }),
+  prepareForCommit: () => null,
+  resetAfterCommit(rootNode) {
+    // 触发布局计算 + 渲染调度
+    rootNode.onComputeLayout?.()
+  },
+  // ...
+})</code></pre>
+
+<code>resetAfterCommit</code> 在每次 React 提交（commit）后触发布局计算，然后调度渲染帧。这是 React 更新 → Yoga 布局 → 终端输出三个阶段的衔接点。
+
+<h3>自定义 DOM 元素</h3>
+
+<p>Ink 定义了一套精简的"DOM"元素类型（<code>src/ink/dom.ts:19-26</code>）：</p>
+
+<pre><code class="language-typescript">export type ElementNames =
+  | 'ink-root'          // 根节点
+  | 'ink-box'           // 块级容器（对应 React 的 <Box>）
+  | 'ink-text'          // 文本节点（对应 <Text>）
+  | 'ink-virtual-text'  // 虚拟文本（不占布局空间）
+  | 'ink-link'          // 可点击链接
+  | 'ink-progress'      // 进度条
+  | 'ink-raw-ansi'      // 原始 ANSI 转义序列</code></pre>
+
+<p>每个 React 组件（如 <code><Box></code>、<code><Text></code>）最终映射为这些内部节点，由 reconciler 通过 <code>createInstance</code> 函数创建。</p>
+
+<p>---</p>
+
+<h2>7.4 布局引擎：Yoga in WASM</h2>
+
+<p>Ink 使用 <strong>Yoga</strong>（Meta 开发的 Flexbox 布局引擎）计算元素的位置和大小。代码中的 <code>yogaNode</code> 引用（<code>dom.ts:14</code>）、<code>ink.tsx:247-257</code> 中的布局计算调用，以及 <code>src/native-ts/yoga-layout/</code> 目录中的 WASM 包，共同构成了布局计算层：</p>
+
+<pre><code class="language-typescript">// src/ink/ink.tsx:247-257
+this.rootNode.yogaNode.setWidth(this.terminalColumns);
+this.rootNode.yogaNode.calculateLayout(this.terminalColumns);
+const ms = performance.now() - t0;
+recordYogaMs(ms);</code></pre>
+
+<p>布局宽度设置为终端列数（<code>terminalColumns</code>），在终端窗口 <code>resize</code> 事件触发时重新计算。</p>
+
+<h3>布局性能追踪</h3>
+
+<p>Yoga 计算时间通过 <code>recordYogaMs()</code> 记录，可在 DevBar（<code>src/components/DevBar.tsx</code>）中实时看到，用于排查 UI 卡顿问题。</p>
+
+<p>---</p>
+
+<h2>7.5 屏幕渲染：差量输出</h2>
+
+<code>src/ink/render-node-to-output.ts</code> 将 DOM 树渲染为一个"屏幕缓冲区"，然后 <code>src/ink/render-to-screen.ts</code> 对比前后两帧，只输出有变化的部分。
+
+<strong>布局位移检测</strong>（<code>render-node-to-output.ts:34-41</code>）：
+
+<pre><code class="language-typescript">let layoutShifted = false
+
+<p>export function didLayoutShift(): boolean {
+  return layoutShifted
+}</code></pre></p>
+
+<p>当检测到布局发生位移（元素位置/大小变化），渲染器会使用"全屏刷新"而不是差量更新，确保不会出现残影。稳态帧（如 spinner 旋转、时钟更新）通常不触发布局位移，可以走 O(changed cells) 的差量路径。</p>
+
+<h3>滚动优化</h3>
+
+<p>对于滚动操作，Ink 实现了 DECSTBM 硬件滚动优化（<code>render-node-to-output.ts:49</code>）：当 <code>ScrollBox</code> 的 <code>scrollTop</code> 变化时，生成一个 <code>ScrollHint</code>，<code>log-update.ts</code> 据此发送终端的硬件滚动指令（<code>CSI n S</code>/<code>CSI n T</code>），而不是重写整个视口。</p>
+
+<p>---</p>
+
+<h2>7.6 主 REPL 组件</h2>
+
+<code>src/screens/REPL.tsx</code> 是整个 UI 的核心组件，管理用户交互的完整生命周期。它的 import 段长达 280 行，汇集了几乎所有的 Hook 和子组件——这反映了它作为"顶层编排者"的地位。
+
+<h3>REPL 的主要职责</h3>
+
+<p>通过阅读 <code>REPL.tsx</code> 的 import 段，可以归纳出 REPL 管理的核心关注点：</p>
+
+<pre><code class="language-">消息历史管理    ← useAssistantHistory, useTurnDiffs
+查询执行        ← query(), handlePromptSubmit
+权限系统        ← PermissionRequest, useCanUseTool
+后台任务        ← useTasksV2, useBackgroundTaskNavigation
+键位绑定        ← KeybindingSetup, useCommandKeybindings
+会话持久化      ← sessionStorage, adoptResumedSessionFile
+费用追踪        ← useCostSummary, cost-tracker
+MCP 集成        ← useMergedClients, useMergedTools
+Vim 模式        ← useVimInput（在 PromptInput 中）</code></pre>
+
+<p>REPL 中的流式输出处理通过 <code>handleMessageFromStream</code> 函数实现，它逐条处理 <code>query()</code> 生成器 yield 出的消息，将助手的流式响应实时追加到 <code>messages</code> 状态数组中，触发 React 重渲染，最终通过 Ink 渲染到终端。</p>
+
+<p>---</p>
+
+<h2>7.7 键位绑定系统</h2>
+
+<code>src/keybindings/</code> 目录实现了一套完整的、用户可自定义的键位绑定系统。
+
+<h3>架构分层</h3>
+
+<pre><code class="language-mermaid">graph LR
+    A[defaultBindings.ts\n内置默认键位] --> C[KeybindingProviderSetup.tsx\n合并+热重载]
+    B[~/.claude/keybindings.json\n用户自定义] --> C
+    C --> D[KeybindingContext.tsx\nReact Context 提供键位表]
+    D --> E[useKeybinding.ts\n组件消费接口]</code></pre>
+
+<h3>默认键位</h3>
+
+<code>src/keybindings/defaultBindings.ts:32</code> 定义了所有内置快捷键，按 Context 分组：
+
+<pre><code class="language-typescript">// 全局 Context
+'ctrl+c': 'app:interrupt',
+'ctrl+d': 'app:exit',
+'ctrl+l': 'app:redraw',
+'ctrl+t': 'app:toggleTodos',
+'ctrl+o': 'app:toggleTranscript',
+'ctrl+r': 'history:search',
+
+<p>// Chat Context
+'escape': 'chat:cancel',
+'ctrl+x ctrl+k': 'chat:killAgents',  // 和弦（chord）
+'shift+tab': 'chat:cycleMode',
+'enter': 'chat:submit',</code></pre></p>
+
+<p>注意 <code>ctrl+x ctrl+k</code> 是一个<strong>和弦（chord）</strong>——需要先按 <code>ctrl+x</code>，在 1 秒内再按 <code>ctrl+k</code>（超时配置在 <code>KeybindingProviderSetup.tsx:30</code>）。</p>
+
+<h3>键位 Context</h3>
+
+<code>src/keybindings/schema.ts:12-32</code> 定义了 17 个键位 Context，如 <code>Global</code>、<code>Chat</code>、<code>Autocomplete</code>、<code>Confirmation</code>、<code>Transcript</code>、<code>Vim</code> 等，每个 Context 对应 UI 的特定状态，确保同一按键在不同场景下有不同行为（例如 <code>escape</code> 在 Chat Context 是取消，在 Vim 的 NORMAL 模式有不同含义）。
+
+<h3>用户自定义与热重载</h3>
+
+<code>src/keybindings/KeybindingProviderSetup.tsx</code> 在启动时监听 <code>~/.claude/keybindings.json</code> 的文件变化（<code>subscribeToKeybindingChanges</code>），支持<strong>无需重启的热重载</strong>——修改键位文件后立即生效。
+
+<p>---</p>
+
+<h2>7.8 Vim 模式</h2>
+
+<code>src/hooks/useVimInput.ts</code> 实现了完整的 Vim 输入模式，这是 Claude Code 在 CLI 用户体验上的亮点之一。
+
+<h3>状态机设计</h3>
+
+<p>Vim 输入通过 <code>vimStateRef</code> 维护状态（<code>useVimInput.ts:35</code>）：</p>
+
+<pre><code class="language-typescript">const vimStateRef = React.useRef<VimState>(createInitialVimState())
+const [mode, setMode] = useState<VimMode>('INSERT')</code></pre>
+
+<code>VimState</code> 包含当前模式（<code>INSERT</code>/<code>NORMAL</code>）和命令积累状态（如 <code>d2w</code> 这样的复合命令）。
+
+<h3>模式切换</h3>
+
+<pre><code class="language-typescript">// useVimInput.ts:77 - Escape 切换到 NORMAL 模式
+vimStateRef.current = { mode: 'NORMAL', command: { type: 'idle' } }
+
+<p>// useVimInput.ts:54 - i/a/o 等切换回 INSERT 模式
+vimStateRef.current = { mode: 'INSERT', insertedText: '' }</code></pre></p>
+
+<h3>方向键映射</h3>
+
+<p>在 NORMAL 模式下，方向键被映射为 Vim 动作（<code>useVimInput.ts:263-268</code>）：</p>
+
+<pre><code class="language-typescript">let vimInput = input
+if (key.leftArrow)  vimInput = 'h'
+else if (key.rightArrow) vimInput = 'l'
+else if (key.upArrow)    vimInput = 'k'
+else if (key.downArrow)  vimInput = 'j'</code></pre>
+
+<p>状态转换由 <code>src/vim/transitions.ts</code> 中的 <code>transition()</code> 函数驱动，支持完整的 Vim 动作和操作符组合，如 <code>d2w</code>（删除两个词）、<code>ci"</code>（改变引号内内容）等。</p>
+
+<code>src/components/VimTextInput.tsx</code> 是对 <code>useVimInput</code> 的组件封装，供 <code>PromptInput</code> 使用；普通的文本输入则走 <code>src/components/TextInput.tsx</code> 加上 <code>useTextInput</code> Hook。
+
+<p>---</p>
+
+<h2>7.9 费用追踪</h2>
+
+<code>src/cost-tracker.ts</code> 负责追踪当前会话的 API 费用，其数据来源于 <code>src/bootstrap/state.ts</code> 中的全局状态计数器。
+
+<p>核心数据结构（<code>cost-tracker.ts:71-80</code>）：</p>
+
+<pre><code class="language-typescript">type StoredCostState = {
+  totalCostUSD: number
+  totalAPIDuration: number
+  totalAPIDurationWithoutRetries: number
+  totalToolDuration: number
+  totalLinesAdded: number
+  totalLinesRemoved: number
+  lastDuration: number | undefined
+  modelUsage: { [modelName: string]: ModelUsage } | undefined
+}</code></pre>
+
+<code>src/costHook.ts</code> 中的 <code>useCostSummary</code> Hook 在 <code>process.exit</code> 事件时将费用摘要写入 stdout，并将状态持久化到项目配置文件（<code>cost-tracker.ts:15-22</code>）：
+
+<pre><code class="language-typescript">export function useCostSummary(getFpsMetrics?: () => FpsMetrics | undefined): void {
+  useEffect(() => {
+    const f = () => {
+      if (hasConsoleBillingAccess()) {
+        process.stdout.write('\n' + formatTotalCost() + '\n')
+      }
+      saveCurrentSessionCosts(getFpsMetrics?.())
+    }
+    process.on('exit', f)
+    return () => { process.off('exit', f) }
+  }, [])
+}</code></pre>
+
+<p>费用状态可以在 Session 恢复时重建（<code>restoreCostStateForSession</code>），确保 <code>--resume</code> 重启后显示累计而非清零的费用。</p>
+
+<p>---</p>
+
+<h2>7.10 关键 Hook 概览</h2>
+
+<code>src/hooks/</code> 目录包含 80+ 个 Hook，涵盖了 REPL 所有的副作用和交互逻辑。以下是最核心的几个：
+
+<p>| Hook 文件 | 功能 |
+|---|---|
+| <code>useTextInput.ts</code> | 基础文本输入状态管理（光标、选区、历史） |
+| <code>useVimInput.ts</code> | Vim 模式输入（基于 useTextInput 扩展） |
+| <code>useCommandKeybindings.tsx</code> | 将键位绑定动作映射到 REPL 命令处理函数 |
+| <code>useGlobalKeybindings.tsx</code> | 全局键位处理（不依赖 Context 聚焦状态） |
+| <code>useMainLoopModel.ts</code> | 主循环模型状态（支持运行时切换） |
+| <code>useQueueProcessor.ts</code> | 异步消息队列处理（防止并发冲突） |
+| <code>useCancelRequest.ts</code> | Ctrl+C 取消当前请求 |
+| <code>useExitOnCtrlCD.ts</code> | 双击 Ctrl+C/D 退出（防误触） |
+| <code>useArrowKeyHistory.tsx</code> | 上下键浏览历史输入 |
+| <code>useTerminalSize.ts</code> | 监听终端 resize 事件 |
+| <code>useVirtualScroll.ts</code> | 长消息列表的虚拟滚动 |
+| <code>useLogMessages.ts</code> | 调试日志消息管理 |</p>
+
+<p>---</p>
+
+<h2>7.11 消息渲染流水线</h2>
+
+<p>从用户按下 Enter 到流式 LLM 输出显示在终端，完整流水线如下：</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant User as 用户按键
+    participant PromptInput as PromptInput 组件
+    participant REPL as REPL.tsx
+    participant Query as query() 生成器
+    participant Ink as Ink 渲染器
+    participant Term as 终端
+
+<p>User->>PromptInput: Enter
+    PromptInput->>REPL: handleSubmit(prompt)
+    REPL->>Query: query(messages, tools, model)
+    loop 流式输出
+        Query-->>REPL: yield StreamEvent
+        REPL->>REPL: handleMessageFromStream(event)\n更新 messages 状态
+        REPL->>Ink: React 重渲染触发
+        Ink->>Ink: reconciler.commit()\n→ Yoga 布局\n→ diff 帧缓冲区
+        Ink->>Term: 输出变化的字符单元格
+    end
+    Query-->>REPL: yield AssistantMessage (完整)
+    REPL->>REPL: 更新 cost-tracker</code></pre></p>
+
+<p>关键性能特征：
+<ul>
+<li>React <strong>Concurrent Mode</strong> 允许渲染工作被中断，不会因大量消息涌入而卡住输入</li>
+<li>Ink 的 <strong>差量渲染</strong> 确保每帧只写入变化的终端单元格</li>
+<li><strong><code>queueMicrotask</code> 延迟</strong> 确保 <code>useLayoutEffect</code>（如光标位置）在渲染前就绪</li>
+</ul></p>
+
+<p>---</p>
+
+<h2>7.12 屏幕组织</h2>
+
+<code>src/screens/</code> 目录包含三个顶层屏幕：
+
+<ul>
+<li><strong><code>REPL.tsx</code></strong>：主交互屏幕，包含消息历史、输入框、状态栏</li>
+<li><strong><code>Doctor.tsx</code></strong>：<code>/doctor</code> 命令的诊断屏幕，展示系统状态信息</li>
+<li><strong><code>ResumeConversation.tsx</code></strong>：会话恢复选择屏幕</li>
+</ul>
+
+<p>实际的渲染启动逻辑在 <code>src/interactiveHelpers.ts</code> 的 <code>renderAndRun</code> 和 <code>showSetupScreens</code> 函数中，负责在屏幕之间切换（如首次运行显示 onboarding，之后直接进 REPL）。</p>
+
+<p>---</p>
+
+<h2>7.13 终端适配层</h2>
+
+<code>src/ink/terminal.ts</code> 处理不同终端的兼容性差异，包括：
+
+<ul>
+<li><strong>Kitty 键盘协议</strong>（扩展按键支持）：通过 <code>ENABLE_KITTY_KEYBOARD</code> / <code>DISABLE_KITTY_KEYBOARD</code> 序列控制</li>
+<li><strong>xterm.js 检测</strong>：用于 VSCode 集成的特殊行为（如滚动曲线调整）</li>
+<li><strong>鼠标跟踪</strong>：alt-screen 模式下开启，支持点击和悬停交互</li>
+<li><strong>SYNC_OUTPUT_SUPPORTED</strong>：DEC 私有序列 <code>?2026</code>，支持原子化帧输出（避免撕裂）</li>
+</ul>
+
+<code>src/ink/termio/</code> 目录封装了各类终端控制序列（CSI、DEC、OSC），为上层渲染逻辑提供干净的 API。
+
+<p>---</p>
+
+<h2>小结</h2>
+
+<p>Claude Code 终端 UI 的技术栈可以这样总结：</p>
+
+<pre><code class="language-">React (Concurrent Mode)
+    ↓ react-reconciler (自定义)
+Ink DOM (ink-box, ink-text, ...)
+    ↓ Yoga WASM
+Flexbox 布局
+    ↓ render-node-to-output
+Screen Buffer (双缓冲)
+    ↓ writeDiffToTerminal
+终端 ANSI 字符输出</code></pre>
+
+<p>这套架构让 UI 代码可以像 Web 前端一样用 React 组件和 Hook 来写，同时通过深度定制的渲染管道（双缓冲差量、Yoga 布局、节流帧调度）达到了终端 UI 所需的高性能输出。Vim 模式、用户可定义键位绑定、费用追踪等功能，则展示了这套架构在细节体验上的用心程度。</p>
+            </article>
+            
+            <div class="pagination">
+                <div><a href="06-agents.html" class="prev">上一章</a></div>
+                <div><a href="08-bridge.html" class="next">下一章</a></div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

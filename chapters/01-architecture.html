@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>架构全景图 - 解密 Claude Code</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.1/github-markdown.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script>hljs.highlightAll();</script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #f6f8fa;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+        }
+        .nav {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .nav a {
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .nav a:hover {
+            text-decoration: underline;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        .content {
+            background: white;
+            padding: 60px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .markdown-body {
+            box-sizing: border-box;
+            min-width: 200px;
+            max-width: 980px;
+            margin: 0 auto;
+        }
+        .pagination {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 60px;
+            padding-top: 30px;
+            border-top: 1px solid #e1e4e8;
+        }
+        .pagination a {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+        .pagination a:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+        }
+        .pagination .prev::before {
+            content: "← ";
+        }
+        .pagination .next::after {
+            content: " →";
+        }
+        @media (max-width: 768px) {
+            .content {
+                padding: 30px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <div class="nav-container">
+            <a href="../index.html">📘 解密 Claude Code</a>
+            <a href="../index.html#toc">目录</a>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="content">
+            <article class="markdown-body">
+<h1>第 01 章：架构全景图</h1>
+
+<p>> 从 <code>main.tsx</code> 的第一行到多智能体协调层，Claude Code 的架构是一个以 LLM 查询引擎为核心、向外辐射出十余个子系统的同心圆结构。</p>
+
+<p>---</p>
+
+<h2>入口点：<code>main.tsx</code></h2>
+
+<code>src/main.tsx</code> 是整个应用的入口，共 4,683 行。它承担三个核心职责：
+
+<p>1. <strong>启动性能优化</strong>：在任何其他 import 执行之前，立即触发并行的异步预取
+2. <strong>CLI 参数解析</strong>：使用 Commander.js 注册所有子命令和选项
+3. <strong>React/Ink 渲染器初始化</strong>：将终端 UI 挂载到 Ink 渲染树</p>
+
+<p>文件的前 20 行揭示了一个精心设计的启动序列：</p>
+
+<code>src/main.tsx:1-20</code> — 在所有 import 评估完成之前，优先以副作用方式触发三个并行操作：
+
+<pre><code class="language-typescript">// src/main.tsx:9-20（精简）
+import { profileCheckpoint } from './utils/startupProfiler.js';
+profileCheckpoint('main_tsx_entry');
+
+<p>import { startMdmRawRead } from './utils/settings/mdm/rawRead.js';
+startMdmRawRead();  // 并行启动 MDM 策略读取（plutil/reg query 子进程）</p>
+
+<p>import { startKeychainPrefetch } from './utils/secureStorage/keychainPrefetch.js';
+startKeychainPrefetch();  // 并行预取 macOS Keychain（OAuth token + 旧版 API key）</code></pre></p>
+
+<p>注释中明确说明：macOS Keychain 的两次读取若串行执行约需 65ms，并行化可消除这部分启动延迟。这是一个以代码可读性换取启动性能的显式取舍，并通过 <code>eslint-disable custom-rules/no-top-level-side-effects</code> 注释标记为有意为之。</p>
+
+<code>src/main.tsx:74-82</code> — 使用 Bun 的 <code>feature()</code> 门控进行死代码消除：
+
+<pre><code class="language-typescript">const coordinatorModeModule = feature('COORDINATOR_MODE')
+  ? require('./coordinator/coordinatorMode.js')
+  : null;
+
+<p>const assistantModule = feature('KAIROS')
+  ? require('./assistant/index.js')
+  : null;</code></pre></p>
+
+<code>COORDINATOR_MODE</code>、<code>KAIROS</code>、<code>BRIDGE_MODE</code>、<code>PROACTIVE</code>、<code>DAEMON</code>、<code>VOICE_MODE</code> 等特性标志在构建时由 Bun 求值，未激活的分支在打包后的二进制中完全不存在。
+
+<p>---</p>
+
+<h2>高层架构图</h2>
+
+<pre><code class="language-mermaid">graph TB
+    subgraph 入口层
+        MAIN["main.tsx\nCommander.js CLI 解析\nReact/Ink 渲染器"]
+    end
+
+<p>subgraph 核心引擎
+        QE["QueryEngine.ts\nLLM 查询引擎\n流式响应 / 工具调用循环\n重试 / Token 计数"]
+        QUERY["query.ts\nquery() 函数\n单次 API 调用封装"]
+    end</p>
+
+<p>subgraph 上下文层
+        CTX["context.ts\ngetSystemContext()\ngetUserContext()\ngit status / CLAUDE.md"]
+        BOOTSTRAP["bootstrap/state.ts\n全局可变状态\n模型覆盖 / 会话信息"]
+    end</p>
+
+<p>subgraph 工具系统
+        TOOLS["tools.ts\n工具注册表\ngetTools()"]
+        TOOLBASE["Tool.ts\n工具类型定义\nToolInput / PermissionResult"]
+        TOOLIMPLS["tools/\n~40 个工具实现\nBash / FileEdit / Glob / Grep\nAgentTool / SkillTool / MCPTool\nTaskCreate / SendMessage / ..."]
+    end</p>
+
+<p>subgraph 权限系统
+        PERM["hooks/toolPermission/\nPermissionContext.ts\n权限模式: default/plan/acceptEdits/bypassPermissions/dontAsk/auto"]
+        CANUSETOOL["hooks/useCanUseTool.tsx\nCanUseToolFn\n每次工具调用前检查"]
+    end</p>
+
+<p>subgraph 命令系统
+        CMDS["commands.ts\n命令注册表\ngetCommands()"]
+        CMDIMPLS["commands/\n~50 个斜杠命令\n/commit /review /compact\n/mcp /memory /skills ..."]
+    end</p>
+
+<p>subgraph 服务层
+        API["services/api/\nAnthropic SDK 封装\nFile API / Bootstrap"]
+        MCP["services/mcp/\nMCP 服务器连接\n官方注册表"]
+        OAUTH["services/oauth/\nOAuth 2.0 流程"]
+        LSP["services/lsp/\nLanguage Server Protocol"]
+        ANALYTICS["services/analytics/\nGrowthBook 特性开关"]
+        COMPACT["services/compact/\n上下文压缩"]
+        PLUGINS_SVC["services/plugins/\n插件加载器"]
+    end</p>
+
+<p>subgraph 多智能体系统
+        AGENT["tools/AgentTool/\n子 Agent 生成\n颜色管理 / 定义加载"]
+        COORDINATOR["coordinator/\ncoordinatorMode.ts\n多 Agent 协调"]
+        SWARM["utils/swarm/\n团队模式\nTeamCreate / SendMessage"]
+    end</p>
+
+<p>subgraph IDE 集成
+        BRIDGE["bridge/\nbridgeMain.ts\n双向消息协议\nVS Code / JetBrains"]
+        REPLBRIDGE["bridge/replBridge.ts\nREPL 会话桥接"]
+    end</p>
+
+<p>subgraph 插件与技能
+        PLUGINS["plugins/\nbundled/ + 第三方"]
+        SKILLS["skills/\nbundled/ + 用户自定义\nSkillTool 执行"]
+    end</p>
+
+<p>subgraph 持久化与状态
+        MEMDIR["memdir/\n持久化记忆\n自动记忆提取"]
+        STATE["state/AppState.js\n应用状态"]
+        HISTORY["history.ts\n对话历史"]
+        COSTTRACK["cost-tracker.ts\nToken 费用追踪"]
+    end</p>
+
+<p>subgraph UI 层
+        INK["ink/\nInk 渲染器封装"]
+        COMPONENTS["components/\n~140 个 Ink UI 组件"]
+        SCREENS["screens/\nDoctor / REPL / Resume"]
+        HOOKS["hooks/\nReact Hooks (~80个)"]
+    end</p>
+
+<p>MAIN --> QE
+    MAIN --> CTX
+    MAIN --> BOOTSTRAP
+    MAIN --> CMDS
+    MAIN --> TOOLS
+    MAIN --> INK</p>
+
+<p>QE --> QUERY
+    QE --> TOOLBASE
+    QE --> PERM
+    QE --> COSTTRACK
+    QE --> MEMDIR</p>
+
+<p>QUERY --> API</p>
+
+<p>CTX --> BOOTSTRAP
+    CTX --> MEMDIR</p>
+
+<p>TOOLS --> TOOLBASE
+    TOOLS --> TOOLIMPLS
+    TOOLIMPLS --> AGENT
+    TOOLIMPLS --> SKILLS
+    TOOLIMPLS --> MCP</p>
+
+<p>PERM --> CANUSETOOL</p>
+
+<p>CMDS --> CMDIMPLS
+    CMDIMPLS --> COMPACT</p>
+
+<p>AGENT --> COORDINATOR
+    AGENT --> SWARM</p>
+
+<p>API --> OAUTH
+    MCP --> LSP
+    ANALYTICS --> BOOTSTRAP</p>
+
+<p>BRIDGE --> REPLBRIDGE
+    MAIN -.->|feature BRIDGE_MODE| BRIDGE</p>
+
+<p>PLUGINS --> PLUGINS_SVC
+    SKILLS --> PLUGINS</p>
+
+<p>STATE --> HISTORY
+    MAIN --> STATE</p>
+
+<p>INK --> COMPONENTS
+    COMPONENTS --> HOOKS
+    SCREENS --> INK</code></pre></p>
+
+<p>---</p>
+
+<h2>核心子系统详解</h2>
+
+<h3>1. QueryEngine — 一切的中枢</h3>
+
+<code>src/QueryEngine.ts</code>（1,295 行）是整个系统最重要的文件。它不直接调用 Anthropic API，而是通过 <code>src/query.ts</code> 中的 <code>query()</code> 函数作为单次调用的原子单元，在其上构建了完整的<strong>工具调用循环</strong>（agentic loop）：
+
+<ul>
+<li>向 Claude API 发送消息</li>
+<li>接收流式响应</li>
+<li>检测工具调用请求（<code>tool_use</code> 内容块）</li>
+<li>通过 <code>CanUseToolFn</code> 检查权限</li>
+<li>执行工具并将结果作为 <code>tool_result</code> 消息追加</li>
+<li>重复上述过程，直到模型输出纯文本响应或达到循环上限</li>
+</ul>
+
+<p>QueryEngine 还负责：Token 计数、费用追踪、重试逻辑（指数退避）、thinking 模式、快速模式（haiku 模型切换）、以及对话历史的持久化。</p>
+
+<code>src/QueryEngine.ts:1-8</code> — 文件开头即使用 <code>feature()</code> 门控，显示其与 Bun 构建系统的深度集成：
+
+<pre><code class="language-typescript">import { feature } from 'bun:bundle'</code></pre>
+
+<h3>2. 上下文系统 — 系统提示的组装</h3>
+
+<code>src/context.ts</code> 提供两个关键函数，两者均使用 <code>lodash memoize</code> 缓存，确保单次会话内只计算一次：
+
+<strong><code>getSystemContext()</code></strong>（<code>src/context.ts:116</code>）
+<ul>
+<li>收集 git 状态（branch、main branch、<code>git status --short</code>、最近 5 条提交）</li>
+<li>git status 超过 2,000 字符时截断</li>
+<li>在远程模式（<code>CLAUDE_CODE_REMOTE</code>）下跳过 git 状态收集</li>
+</ul>
+
+<strong><code>getUserContext()</code></strong>（<code>src/context.ts:155</code>）
+<ul>
+<li>读取 <code>CLAUDE.md</code> 文件（从当前目录向上遍历，以及 <code>--add-dir</code> 指定的额外目录）</li>
+<li>注入当前日期（<code>getLocalISODate()</code>）</li>
+<li><code>--bare</code> 模式下跳过自动 <code>CLAUDE.md</code> 发现</li>
+</ul>
+
+<p>这两个函数的输出最终被组装进发送给 Claude 的系统提示（system prompt）。</p>
+
+<h3>3. 工具系统 — 能力的载体</h3>
+
+<code>src/Tool.ts</code>（792 行）定义了工具的类型基础。每个工具是一个结构化对象，包含：
+
+<ul>
+<li><strong>输入 Schema</strong>：<code>ToolInputJSONSchema</code>（基于 Zod v4）</li>
+<li><strong>权限模型</strong>：每个工具声明自己需要哪种权限级别</li>
+<li><strong>执行函数</strong>：接收 <code>ToolUseContext</code>，返回结果</li>
+<li><strong>进度状态类型</strong>：<code>AgentToolProgress</code> 等用于流式进度更新</li>
+</ul>
+
+<code>src/tools/</code> 目录下约有 40 个工具实现，按子目录组织：
+
+<p>| 类别 | 工具 |
+|------|------|
+| 文件操作 | <code>FileReadTool</code>、<code>FileWriteTool</code>、<code>FileEditTool</code>、<code>GlobTool</code>、<code>GrepTool</code> |
+| 命令执行 | <code>BashTool</code>、<code>PowerShellTool</code> |
+| 智能体 | <code>AgentTool</code>、<code>SendMessageTool</code>、<code>TeamCreateTool</code>、<code>TeamDeleteTool</code> |
+| 任务管理 | <code>TaskCreateTool</code>、<code>TaskGetTool</code>、<code>TaskListTool</code>、<code>TaskUpdateTool</code>、<code>TaskStopTool</code>、<code>TaskOutputTool</code> |
+| 模式控制 | <code>EnterPlanModeTool</code>、<code>ExitPlanModeTool</code>、<code>EnterWorktreeTool</code>、<code>ExitWorktreeTool</code> |
+| 外部集成 | <code>MCPTool</code>、<code>LSPTool</code>、<code>WebFetchTool</code>（通过 MCP）、<code>WebSearchTool</code> |
+| 扩展 | <code>SkillTool</code>、<code>ToolSearchTool</code>、<code>SyntheticOutputTool</code>、<code>SleepTool</code> |</p>
+
+<h3>4. 权限系统 — 安全边界</h3>
+
+<code>src/hooks/toolPermission/</code> 实现了六种权限模式（定义于 <code>src/utils/permissions/PermissionMode.ts</code>）：
+
+<ul>
+<li><strong><code>default</code></strong>：敏感操作（文件写入、命令执行）需要用户逐次确认</li>
+<li><strong><code>plan</code></strong>：计划模式，写操作被阻止</li>
+<li><strong><code>acceptEdits</code></strong>：自动接受文件编辑，命令执行仍需确认</li>
+<li><strong><code>bypassPermissions</code></strong>：跳过所有权限检查（危险模式，需显式启用）</li>
+<li><strong><code>dontAsk</code></strong>：遇到需要询问的操作直接拒绝</li>
+<li><strong><code>auto</code></strong>：使用 AI 分类器自动批准/拒绝（仅内部版本，<code>TRANSCRIPT_CLASSIFIER</code> 特性标志门控）</li>
+</ul>
+
+<code>src/hooks/useCanUseTool.tsx</code> 暴露 <code>CanUseToolFn</code> 类型，QueryEngine 在执行每个工具调用前调用此函数。
+
+<h3>5. 多智能体系统 — 并行工作的团队</h3>
+
+<p>这是 Claude Code 架构中最复杂的子系统之一：</p>
+
+<ul>
+<li><strong><code>src/tools/AgentTool/</code></strong>：定义 Agent 的生成逻辑。Agent 是 Claude 的另一个实例，拥有独立的上下文窗口和工具集，通过 <code>SendMessageTool</code> 与主线程通信</li>
+<li><strong><code>src/coordinator/coordinatorMode.ts</code></strong>：在 <code>COORDINATOR_MODE</code> 特性标志激活时，提供中央协调层，管理多个 Agent 的任务分配</li>
+<li><strong><code>src/utils/swarm/</code></strong>：团队模式实现，包括 <code>TeamCreateTool</code>（创建 Agent 团队）和重连逻辑</li>
+</ul>
+
+<code>src/main.tsx:64-72</code> 中的懒加载模式避免了这些重量级模块的循环依赖：
+
+<pre><code class="language-typescript">// 懒加载避免循环依赖: teammate.ts -> AppState.tsx -> ... -> main.tsx
+const getTeammateUtils = () => require('./utils/teammate.js')
+const getTeammatePromptAddendum = () => require('./utils/swarm/teammatePromptAddendum.js')</code></pre>
+
+<h3>6. Bridge — IDE 的眼睛和手</h3>
+
+<code>src/bridge/</code> 目录（约 30 个文件）实现了 Claude Code 与 IDE 扩展之间的双向通信协议：
+
+<ul>
+<li><strong><code>bridgeMain.ts</code></strong>：Bridge 主循环，仅在 <code>BRIDGE_MODE</code> 特性标志激活时运行</li>
+<li><strong><code>bridgeMessaging.ts</code></strong>：定义消息协议格式</li>
+<li><strong><code>replBridge.ts</code></strong>：将 CLI 的 REPL 会话暴露给 IDE</li>
+<li><strong><code>jwtUtils.ts</code></strong>：基于 JWT 的双向认证</li>
+<li><strong><code>sessionRunner.ts</code></strong>：会话执行与生命周期管理</li>
+<li><strong><code>trustedDevice.ts</code></strong>：设备信任验证</li>
+</ul>
+
+<p>Bridge 允许 VS Code 和 JetBrains 插件将文件选中内容、光标位置、诊断信息等 IDE 上下文注入 Claude Code 会话，并接收代码修改指令。</p>
+
+<h3>7. 服务层 — 外部世界的接口</h3>
+
+<code>src/services/</code> 下的各子目录各司其职：
+
+<ul>
+<li><strong><code>services/api/</code></strong>：对 Anthropic SDK 的封装，包括 File API（上传图片/PDF）和 Bootstrap API（获取初始配置）</li>
+<li><strong><code>services/mcp/</code></strong>：Model Context Protocol 的客户端实现，负责连接外部 MCP 服务器、获取工具列表和资源列表</li>
+<li><strong><code>services/oauth/</code></strong>：完整的 OAuth 2.0 授权流程，支持 Claude.ai 账号登录</li>
+<li><strong><code>services/analytics/</code></strong>：基于 GrowthBook 的特性开关和 A/B 测试，同时负责使用事件上报</li>
+<li><strong><code>services/compact/</code></strong>：当上下文窗口接近上限时，对对话历史进行智能压缩</li>
+<li><strong><code>services/extractMemories/</code></strong>：自动从对话中提取值得记忆的事实，写入 <code>memdir/</code></li>
+</ul>
+
+<h3>8. UI 层 — React 在终端里运行</h3>
+
+<p>这是 Claude Code 最具特色的技术选型之一：使用 [Ink](https://github.com/vadimdemedes/ink) 在终端中渲染 React 组件树。</p>
+
+<ul>
+<li><strong><code>src/ink/</code></strong>：对 Ink 渲染器的封装，包括终端 I/O 控制序列（<code>SHOW_CURSOR</code> 等 DEC 转义码）</li>
+<li><strong><code>src/components/</code></strong>：约 140 个 Ink UI 组件，覆盖输入框、消息气泡、进度条、差异视图等</li>
+<li><strong><code>src/hooks/</code></strong>：约 80 个 React Hooks，处理键盘输入、工具权限弹窗、滚动、Vim 模式等交互逻辑</li>
+<li><strong><code>src/screens/</code></strong>：全屏界面，如 <code>/doctor</code> 诊断屏、REPL 屏、会话恢复屏</li>
+</ul>
+
+<code>src/context/</code> 目录中的 Context Provider 管理跨组件状态：<code>modalContext.tsx</code>、<code>QueuedMessageContext.tsx</code>、<code>mailbox.tsx</code>（Agent 消息信箱）等。
+
+<p>---</p>
+
+<h2>启动序列</h2>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant OS as 操作系统
+    participant MAIN as main.tsx
+    participant MDM as MDM 策略读取
+    participant KC as Keychain 预取
+    participant GB as GrowthBook
+    participant API as Anthropic API
+    participant INK as Ink 渲染器
+
+<p>OS->>MAIN: 执行二进制
+    MAIN->>MDM: startMdmRawRead()（异步，非阻塞）
+    MAIN->>KC: startKeychainPrefetch()（异步，非阻塞）
+    Note over MAIN: 继续评估其余 imports（~135ms）
+    MAIN->>GB: initializeGrowthBook()
+    MAIN->>API: fetchBootstrapData()（并行）
+    MAIN->>API: prefetchAllMcpResources()（并行）
+    MAIN->>KC: ensureKeychainPrefetchCompleted()（等待结果）
+    MAIN->>INK: renderAndRun() — 挂载 React 组件树
+    INK-->>OS: 终端 UI 就绪</code></pre></p>
+
+<p>---</p>
+
+<h2>数据流：一次工具调用的旅程</h2>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant USER as 用户输入
+    participant QE as QueryEngine
+    participant API as Anthropic API
+    participant PERM as 权限系统
+    participant TOOL as 工具实现
+    participant FS as 文件系统/Shell
+
+<p>USER->>QE: 用户消息
+    QE->>API: 发送消息（含工具定义）
+    API-->>QE: 流式响应（SSE）
+    API-->>QE: tool_use 内容块
+    QE->>PERM: canUseTool(toolName, input)
+    alt 需要用户确认
+        PERM-->>USER: 弹出权限确认 UI
+        USER-->>PERM: 批准 / 拒绝
+    end
+    PERM-->>QE: PermissionResult
+    QE->>TOOL: tool.call(input, context)
+    TOOL->>FS: 执行操作
+    FS-->>TOOL: 结果
+    TOOL-->>QE: ToolResult
+    QE->>API: tool_result 消息
+    API-->>QE: 下一轮响应
+    Note over QE,API: 循环直到纯文本响应
+    QE-->>USER: 最终输出</code></pre></p>
+
+<p>---</p>
+
+<h2>关键设计决策</h2>
+
+<h3>并行预取优化启动速度</h3>
+
+<code>src/main.tsx:13-20</code> 中的三行代码（<code>profileCheckpoint</code>、<code>startMdmRawRead</code>、<code>startKeychainPrefetch</code>）是一个典型的"不惜代码清洁度换性能"的工程决策。注释明确说明这些副作用必须在所有其他 import 之前运行，并通过 eslint 规则豁免标记。
+
+<h3>Bun <code>feature()</code> 实现死代码消除</h3>
+
+<p>不同于运行时的 <code>if/else</code>，<code>bun:bundle</code> 的 <code>feature()</code> 在构建时求值。这意味着未激活的特性（如 <code>VOICE_MODE</code>、<code>KAIROS</code>、<code>PROACTIVE</code>）在生产二进制中完全不存在，无法通过反编译找到。这是一种比代码混淆更彻底的特性保护机制。</p>
+
+<h3>memoize 保证提示词缓存稳定性</h3>
+
+<code>getSystemContext()</code> 和 <code>getUserContext()</code> 使用 <code>lodash memoize</code>（<code>src/context.ts:116, 155</code>）。这不仅是性能优化，更是为了保证发送给 Claude 的系统提示内容在单次会话内保持不变，从而充分利用 Anthropic API 的 prompt caching 功能（相同前缀的请求可以复用缓存，显著降低 Token 费用）。
+
+<h3>React Hooks 管理 CLI 交互状态</h3>
+
+<p>将 React 的状态管理模型（<code>useState</code>、<code>useEffect</code>、自定义 Hooks）应用于 CLI 的交互逻辑，是 Ink 框架带来的独特编程范式。<code>src/hooks/</code> 中约 80 个 Hooks 文件管理了从键盘绑定（<code>useCommandKeybindings.tsx</code>）到工具权限弹窗（<code>useCanUseTool.tsx</code>）的全部交互状态，这使得复杂的交互逻辑可以用声明式方式表达，而非命令式的事件监听器链。</p>
+
+<p>---</p>
+
+<h2>小结</h2>
+
+<p>Claude Code 的架构可以用一句话概括：<strong>以 <code>QueryEngine</code> 为心脏，以工具系统为四肢，以 React/Ink 为皮肤，以 Bridge 和 MCP 为神经末梢的 AI 编程助手</strong>。</p>
+
+<p>各子系统之间通过明确的接口边界解耦——工具通过 <code>CanUseToolFn</code> 接受权限检查，命令通过 <code>getCommands()</code> 注册表发现，MCP 服务器通过统一的 <code>MCPServerConnection</code> 类型接入。这种设计使得每个子系统都可以独立测试和迭代，而不会牵一发动全身。</p>
+
+<p>下一章我们将深入 <code>QueryEngine.ts</code>，解析 LLM 调用循环的每一个细节。</p>
+            </article>
+            
+            <div class="pagination">
+                <div><a href="00-preface.html" class="prev">上一章</a></div>
+                <div><a href="02-startup.html" class="next">下一章</a></div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>前言：一次意外的源码泄露 - 解密 Claude Code</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.1/github-markdown.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script>hljs.highlightAll();</script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #f6f8fa;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+        }
+        .nav {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .nav a {
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .nav a:hover {
+            text-decoration: underline;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        .content {
+            background: white;
+            padding: 60px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .markdown-body {
+            box-sizing: border-box;
+            min-width: 200px;
+            max-width: 980px;
+            margin: 0 auto;
+        }
+        .pagination {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 60px;
+            padding-top: 30px;
+            border-top: 1px solid #e1e4e8;
+        }
+        .pagination a {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+        .pagination a:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+        }
+        .pagination .prev::before {
+            content: "← ";
+        }
+        .pagination .next::after {
+            content: " →";
+        }
+        @media (max-width: 768px) {
+            .content {
+                padding: 30px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <div class="nav-container">
+            <a href="../index.html">📘 解密 Claude Code</a>
+            <a href="../index.html#toc">目录</a>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="content">
+            <article class="markdown-body">
+<h1>前言——一次意外的源码泄露</h1>
+
+<p>> 2026年3月31日，Anthropic 的 Claude Code CLI 因 npm 包中遗留了 source map 文件，完整的 TypeScript 源码意外暴露在公众面前。这本书，就是对那份源码的系统性解读。</p>
+
+<p>---</p>
+
+<h2>事件始末</h2>
+
+<p>2026年3月31日，安全研究员 Chaofan Shou（Twitter 账号 @Fried_rice）发布了一条推文：</p>
+
+<p>> <em>"Claude code source code has been leaked via a map file in their npm registry!"</em>
+>
+> — [@Fried_rice, 2026-03-31](https://x.com/Fried_rice/status/2038894956459290963)</p>
+
+<p>这条推文随即在开发者社区引发广泛关注。事件的技术细节并不复杂：Anthropic 在发布 Claude Code 的 npm 包时，意外地在构建产物中保留了 <code>.map</code>（source map）文件。Source map 是 JavaScript 构建工具链中用于调试的映射文件，它保存了编译后代码与原始源码之间的对应关系。更关键的是，该 <code>.map</code> 文件包含了一个指向完整未混淆 TypeScript 源码压缩包的 URL，而这个 URL 指向的是 Anthropic 的 R2 对象存储桶，任何人都可以直接下载。</p>
+
+<p>于是，在短短数小时内，完整的 Claude Code 源代码在互联网上广泛流传。</p>
+
+<p>这并非黑客入侵，也没有任何服务器被攻破。这是一次典型的"供应链意外泄露"——一个在构建配置中被遗忘的开关，让商业软件的核心代码彻底裸露。</p>
+
+<p>---</p>
+
+<h2>Claude Code 是什么</h2>
+
+<p>Claude Code 是 Anthropic 推出的官方命令行工具（CLI），让开发者可以直接在终端中与 Claude 模型交互，完成软件工程任务。它不仅仅是一个聊天界面的命令行版本，而是一个深度集成到开发工作流中的 AI 编程助手：</p>
+
+<ul>
+<li><strong>编辑文件</strong>：直接读取、修改、创建代码文件</li>
+<li><strong>执行命令</strong>：在 shell 中运行任意命令</li>
+<li><strong>搜索代码库</strong>：通过 ripgrep 进行全文搜索，通过 glob 进行文件定位</li>
+<li><strong>管理 git</strong>：提交、查看差异、处理 PR</li>
+<li><strong>多智能体协作</strong>：生成子 Agent 并行处理复杂任务</li>
+<li><strong>IDE 集成</strong>：通过 Bridge 系统连接 VS Code 和 JetBrains</li>
+</ul>
+
+<p>Claude Code 的定位是"在终端里工作的编程伙伴"，它的设计哲学是让 AI 能够访问开发者本地环境中的一切——文件系统、命令行、版本控制——而不是局限在一个沙盒化的代码补全框架里。</p>
+
+<p>---</p>
+
+<h2>代码库规模</h2>
+
+<p>根据 README 及实际统计数据，泄露的源码规模相当可观：</p>
+
+<p>| 指标 | 数值 |
+|------|------|
+| 总文件数 | ~1,900 个文件 |
+| 总代码行数 | 512,000+ 行 |
+| TypeScript 源文件数 | 1,884 个 <code>.ts</code> / <code>.tsx</code> 文件 |
+| 最大单文件 | <code>main.tsx</code>（4,683 行）|
+| 核心引擎文件 | <code>QueryEngine.ts</code>（1,295 行）|</p>
+
+<p>这不是一个小型工具的代码量。相比之下，许多知名开源项目的核心代码库也不过如此规模。这个数字揭示了 Claude Code 背后的工程投入：它是一个功能完整、经过生产验证的商业软件产品。</p>
+
+<p>顶层目录结构如下：</p>
+
+<pre><code class="language-">src/
+├── main.tsx          # 入口（Commander.js CLI 解析 + React/Ink 渲染器初始化）
+├── QueryEngine.ts    # LLM 查询引擎（核心 API 调用层）
+├── Tool.ts           # 工具类型定义基础
+├── commands.ts       # 斜杠命令注册表
+├── tools.ts          # 工具注册表
+├── context.ts        # 系统与用户上下文收集
+├── cost-tracker.ts   # Token 费用追踪
+│
+├── commands/         # 斜杠命令实现（约 50 个）
+├── tools/            # Agent 工具实现（约 40 个）
+├── components/       # Ink UI 组件（约 140 个）
+├── hooks/            # React Hooks
+├── services/         # 外部服务集成
+├── screens/          # 全屏 UI（Doctor、REPL、Resume）
+├── bridge/           # IDE 集成桥接层
+├── coordinator/      # 多 Agent 协调器
+├── plugins/          # 插件系统
+├── skills/           # 技能系统
+├── state/            # 状态管理
+├── memdir/           # 持久化记忆目录
+├── tasks/            # 任务管理
+└── ...               # 其他子系统</code></pre>
+
+<p>---</p>
+
+<h2>技术栈一览</h2>
+
+<p>Claude Code 的技术选型颇具特色：</p>
+
+<p>| 层次 | 技术 |
+|------|------|
+| 运行时 | [Bun](https://bun.sh)（非 Node.js） |
+| 语言 | TypeScript（strict 模式） |
+| 终端 UI | React + [Ink](https://github.com/vadimdemedes/ink) |
+| CLI 解析 | Commander.js（extra-typings） |
+| Schema 验证 | Zod v4 |
+| 代码搜索 | ripgrep |
+| 协议 | MCP SDK、LSP |
+| API | Anthropic SDK |
+| 遥测 | OpenTelemetry + gRPC |
+| 特性开关 | GrowthBook |
+| 认证 | OAuth 2.0、JWT、macOS Keychain |</p>
+
+<p>选择 Bun 而非 Node.js 是一个有意为之的决策：Bun 提供了更快的启动速度（对 CLI 工具至关重要）和内置的 <code>bun:bundle</code> 特性开关系统，后者被 Claude Code 大量用于死代码消除。</p>
+
+<p>---</p>
+
+<h2>这本书会讲什么</h2>
+
+<p>本书面向对 AI 工程、CLI 工具设计或大型 TypeScript 项目架构感兴趣的开发者。我们将系统性地解读这份意外公开的源码，从宏观架构到微观实现，还原一个商业 AI 编程助手的完整工程图景。</p>
+
+<strong>本书结构如下：</strong>
+
+<ul>
+<li><strong>第 00 章（本章）</strong>：泄露事件背景与代码库总览</li>
+<li><strong>第 01 章：架构全景图</strong> — 高层架构、子系统关系、入口点分析</li>
+<li><strong>第 02 章：启动流程与性能优化</strong> — 并行预取、懒加载、启动分析器</li>
+<li><strong>第 03 章：工具系统</strong> — 工具定义、输入 Schema、权限模型</li>
+<li><strong>第 04 章：LLM 查询引擎</strong> — 流式响应、工具调用循环、重试逻辑</li>
+<li><strong>第 05 章：权限系统</strong> — 六种权限模式、用户确认流程</li>
+<li><strong>第 06 章：Agent 子系统与多智能体协作</strong> — AgentTool、coordinator、swarm 机制</li>
+<li><strong>第 07 章：终端 UI</strong> — React/Ink 渲染引擎、键位绑定、Vim 模式</li>
+<li><strong>第 08 章：Remote Control Bridge</strong> — VS Code/JetBrains 双向通信</li>
+<li><strong>第 09 章：MCP 协议集成</strong> — Model Context Protocol 的实现细节</li>
+<li><strong>第 10 章：插件、技能与记忆系统</strong> — 可扩展性设计与跨会话记忆</li>
+<li><strong>第 11 章：特色功能拾遗</strong> — 任务管理、Notebook 支持、成本追踪等</li>
+<li><strong>第 12 章：工程启示录</strong> — 架构反思与工程实践总结</li>
+</ul>
+
+<p>---</p>
+
+<h2>阅读说明</h2>
+
+<p>本书所有代码引用均来自泄露的源码，文件路径以 <code>src/</code> 为根。行号基于原始文件，可能因后续版本变化而偏移。</p>
+
+<p>代码块中的文件路径格式为：</p>
+
+<pre><code class="language-">src/文件路径:行号</code></pre>
+
+<p>所有内容均以分析和教育为目的。原始源码版权归 Anthropic 所有。</p>
+
+<p>---</p>
+
+<em>让我们翻开这份意外的礼物，看看世界上最先进的 AI 编程助手，是如何被构建出来的。</em>
+            </article>
+            
+            <div class="pagination">
+                <div></div>
+                <div><a href="01-architecture.html" class="next">下一章</a></div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>解密 Claude Code：Anthropic CLI 源码深度解析</title>
+    <meta name="description" content="基于2026年3月泄露的Claude Code CLI源码进行深度分析">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            line-height: 1.8;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 60px 40px;
+            text-align: center;
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+            font-weight: 700;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .subtitle {
+            font-size: 1.2em;
+            opacity: 0.95;
+            margin-bottom: 10px;
+        }
+        
+        .badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+            margin-top: 20px;
+            font-size: 0.9em;
+        }
+        
+        main {
+            padding: 40px;
+        }
+        
+        .intro {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 40px;
+            border-left: 5px solid #667eea;
+        }
+        
+        .intro h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+        
+        .toc {
+            margin: 40px 0;
+        }
+        
+        .toc h2 {
+            color: #333;
+            margin-bottom: 25px;
+            font-size: 1.8em;
+            padding-bottom: 15px;
+            border-bottom: 3px solid #667eea;
+        }
+        
+        .chapter-list {
+            list-style: none;
+        }
+        
+        .chapter-list li {
+            margin-bottom: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            border-left: 4px solid transparent;
+        }
+        
+        .chapter-list li:hover {
+            background: #e9ecef;
+            border-left-color: #667eea;
+            transform: translateX(10px);
+        }
+        
+        .chapter-list a {
+            text-decoration: none;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .chapter-number {
+            flex-shrink: 0;
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+        
+        .chapter-title {
+            flex: 1;
+            font-size: 1.1em;
+            font-weight: 500;
+        }
+        
+        footer {
+            background: #2d3748;
+            color: white;
+            padding: 30px 40px;
+            text-align: center;
+        }
+        
+        footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        
+        footer a:hover {
+            text-decoration: underline;
+        }
+        
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+            
+            header {
+                padding: 40px 20px;
+            }
+            
+            h1 {
+                font-size: 1.8em;
+            }
+            
+            main {
+                padding: 20px;
+            }
+            
+            .chapter-list li {
+                padding: 15px;
+            }
+            
+            .chapter-number {
+                width: 40px;
+                height: 40px;
+                font-size: 1em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📘 解密 Claude Code</h1>
+            <p class="subtitle">Anthropic CLI 源码深度解析</p>
+            <span class="badge">🔓 基于 2026.03 源码泄露</span>
+        </header>
+        
+        <main>
+            <div class="intro">
+                <h2>关于本书</h2>
+                <p>本书基于 <strong>2026 年 3 月 31 日</strong>通过 npm source map 泄露的 Claude Code CLI 源码进行深度分析。</p>
+                <p style="margin-top: 10px;">全书 13 章，涵盖架构设计、工具系统、LLM 集成、权限管理、MCP 协议、插件生态等核心技术要点，并提供大量源码引用与工程启示。</p>
+            </div>
+            
+            <div class="toc">
+                <h2>📚 目录</h2>
+                <ul class="chapter-list">
+                    <li>
+                        <a href="chapters/00-preface.html">
+                            <div class="chapter-number">0</div>
+                            <div class="chapter-title">前言：一次意外的源码泄露</div>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="chapters/01-architecture.html">
+                            <div class="chapter-number">1</div>
+                            <div class="chapter-title">架构全景图</div>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="chapters/02-startup.html">
+                            <div class="chapter-number">2</div>
+                            <div class="chapter-title">启动流程与性能优化</div>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="chapters/03-tool-system.html">
+                            <div class="chapter-number">3</div>
+                            <div class="chapter-title">工具系统设计</div>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="chapters/04-query-engine.html">
+                            <div class="chapter-number">4</div>
+                            <div class="chapter-title">LLM 查询引擎</div>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="chapters/05-permissions.html">
+                            <div class="chapter-number">5</div>
+                            <div class="chapter-title">权限系统</div>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="chapters/06-agents.html">
+                            <div class="chapter-number">6</div>
+                            <div class="chapter-title">Agent 子系统与多智能体</div>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="chapters/07-ink-ui.html">
+                            <div class="chapter-number">7</div>
+                            <div class="chapter-title">终端 UI——React 在 CLI 中的实践</div>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="chapters/08-bridge.html">
+                            <div class="chapter-number">8</div>
+                            <div class="chapter-title">IDE Bridge——与编辑器集成</div>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="chapters/09-mcp.html">
+                            <div class="chapter-number">9</div>
+                            <div class="chapter-title">MCP 协议集成</div>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="chapters/10-plugins-skills-memory.html">
+                            <div class="chapter-number">10</div>
+                            <div class="chapter-title">插件、技能与内存系统</div>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="chapters/11-special-features.html">
+                            <div class="chapter-number">11</div>
+                            <div class="chapter-title">特色功能拾遗</div>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="chapters/12-reflections.html">
+                            <div class="chapter-number">12</div>
+                            <div class="chapter-title">工程启示录</div>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </main>
+        
+        <footer>
+            <p>✍️ 作者：Lon | 📅 出版时间：2026年4月</p>
+            <p style="margin-top: 10px; opacity: 0.8;">
+                <small>本书内容仅供学习研究使用，所有代码引用均来自公开泄露源码</small>
+            </p>
+        </footer>
+    </div>
+</body>
+</html>

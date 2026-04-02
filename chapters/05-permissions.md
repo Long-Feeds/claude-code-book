@@ -1,0 +1,367 @@
+# 第五章：权限系统
+
+> 每次 Claude 准备执行一个工具调用时，都必须通过一道精密的权限闸门。这道闸门不是简单的黑白判断，而是一棵拥有十几个节点的决策树，涵盖规则匹配、模式检查、AI 分类器、用户交互、多端竞速等多个层次。本章完整解剖这套系统。
+
+---
+
+## 5.1 权限系统的入口：CanUseToolFn
+
+整个权限系统对外只暴露一个函数类型（`src/hooks/useCanUseTool.tsx:27`）：
+
+```typescript
+// src/hooks/useCanUseTool.tsx:27
+export type CanUseToolFn<
+  Input extends Record<string, unknown> = Record<string, unknown>
+> = (
+  tool: ToolType,
+  input: Input,
+  toolUseContext: ToolUseContext,
+  assistantMessage: AssistantMessage,
+  toolUseID: string,
+  forceDecision?: PermissionDecision<Input>,
+) => Promise<PermissionDecision<Input>>
+```
+
+`CanUseToolFn` 是权限系统的统一接口。无论是交互式 REPL、SDK 无头模式，还是多智能体协调器，都通过这个接口请求权限。`QueryEngine` 在初始化时会用 `wrappedCanUseTool` 包装它，额外追踪每次拒绝事件（`src/QueryEngine.ts:244`）。
+
+---
+
+## 5.2 权限决策结果：三种行为
+
+权限检查的返回值 `PermissionDecision` 只有三种核心行为（源自 `src/types/permissions.ts`，通过 `src/utils/permissions/PermissionResult.ts` 重导出）：
+
+| 行为 | 含义 | 后续动作 |
+|------|------|---------|
+| `allow` | 允许工具执行 | 直接执行，可含 `updatedInput`（修正后的输入） |
+| `deny` | 拒绝执行 | 向 LLM 返回错误结果，停止当前工具调用 |
+| `ask` | 需要询问 | 进入用户交互流程或自动化处理器 |
+
+每个决策还可携带 `decisionReason`，记录决策的具体原因类型：`rule`（规则命中）、`mode`（权限模式）、`classifier`（AI 分类器）、`hook`（外部钩子）、`safetyCheck`（安全检查）等。
+
+---
+
+## 5.3 useCanUseTool Hook：连接 React 与权限逻辑
+
+`useCanUseTool` 是一个 React Hook（`src/hooks/useCanUseTool.tsx:28`），在交互式 REPL 模式下使用。它返回一个 `CanUseToolFn` 函数，该函数执行以下流程：
+
+```typescript
+// src/hooks/useCanUseTool.tsx:32
+t0 = async (tool, input, toolUseContext, assistantMessage, toolUseID, forceDecision) =>
+  new Promise(resolve => {
+    const ctx = createPermissionContext(...)
+
+    // 1. 若已中断，立即拒绝
+    if (ctx.resolveIfAborted(resolve)) return
+
+    // 2. 若有强制决策（forceDecision），直接使用
+    const decisionPromise = forceDecision !== undefined
+      ? Promise.resolve(forceDecision)
+      : hasPermissionsToUseTool(tool, input, toolUseContext, assistantMessage, toolUseID)
+
+    return decisionPromise.then(async result => {
+      if (result.behavior === 'allow') {
+        // 直接允许，记录日志
+        resolve(ctx.buildAllow(result.updatedInput ?? input, ...))
+        return
+      }
+      // 获取工具描述（用于展示给用户）
+      const description = await tool.description(input, ...)
+
+      switch (result.behavior) {
+        case 'deny':
+          // 直接拒绝，记录日志
+          resolve(result); return
+        case 'ask':
+          // 进入多处理器竞速流程
+          ...
+      }
+    })
+  })
+```
+
+---
+
+## 5.4 hasPermissionsToUseTool：核心决策树
+
+`hasPermissionsToUseTool`（`src/utils/permissions/permissions.ts:473`）是权限决策的实质逻辑所在。它内部调用 `hasPermissionsToUseToolInner`（第 1158 行），执行一棵严格有序的决策树：
+
+```mermaid
+flowchart TD
+    A[hasPermissionsToUseToolInner 入口] --> B{1a. denyRule 命中?}
+    B -->|是| DENY1[return deny]
+    B -->|否| C{1b. askRule 命中?}
+    C -->|是，且不可沙箱自动放行| ASK1[return ask]
+    C -->|否 / 沙箱放行| D[1c. 调用 tool.checkPermissions]
+    D --> E{结果?}
+    E -->|deny| DENY2[return deny]
+    E -->|ask + requiresUserInteraction| ASK2[return ask]
+    E -->|ask + 规则来源 ask| ASK3[return ask]
+    E -->|ask + safetyCheck| ASK4[return ask - bypass免疫]
+    E -->|passthrough / allow| F{2a. bypassPermissions 模式?}
+    F -->|是| ALLOW1[return allow - mode: bypass]
+    F -->|否| G{2b. alwaysAllowRule 命中?}
+    G -->|是| ALLOW2[return allow - rule]
+    G -->|否| H[3. passthrough → ask]
+    H --> I[返回 ask + decisionReason]
+```
+
+这棵决策树的关键设计是**优先级严格有序**：
+- 拒绝规则（deny rules）永远最先检查
+- `safetyCheck`（如 `.git/`、`.claude/`、shell 配置文件路径）对 `bypassPermissions` 模式**免疫**（步骤 1g，第 1255–1260 行）——即使在最高权限模式下，修改这些文件也必须提示用户
+- `bypassPermissions` 模式在安全检查之后才生效
+
+### tool.checkPermissions()：工具自定义权限逻辑
+
+每个工具都可以实现自己的 `checkPermissions()` 方法。以 Bash 工具为例，它会检查命令前缀是否在允许列表中、是否匹配危险模式、是否需要沙箱隔离等。这是一个"策略模式"设计——框架定义决策流程，工具定义具体规则。
+
+---
+
+## 5.5 权限模式：六种运行姿态
+
+权限模式（`PermissionMode`）定义在 `src/utils/permissions/PermissionMode.ts`，控制整体的权限松紧程度：
+
+```typescript
+// src/utils/permissions/PermissionMode.ts:44
+const PERMISSION_MODE_CONFIG = {
+  default:            { title: 'Default',            color: 'text'      },
+  plan:               { title: 'Plan Mode',           color: 'planMode'  },
+  acceptEdits:        { title: 'Accept edits',        color: 'autoAccept', symbol: '⏵⏵' },
+  bypassPermissions:  { title: 'Bypass Permissions',  color: 'error',      symbol: '⏵⏵' },
+  dontAsk:            { title: "Don't Ask",           color: 'error',      symbol: '⏵⏵' },
+  // (TRANSCRIPT_CLASSIFIER feature flag)
+  auto:               { title: 'Auto mode',           color: 'warning',    symbol: '⏵⏵' },
+}
+```
+
+各模式的实际效果（在 `hasPermissionsToUseTool` 中体现）：
+
+| 模式 | 描述 | `ask` 的处理方式 |
+|------|------|----------------|
+| `default` | 标准模式，遇到未授权工具提示用户 | 展示交互对话框 |
+| `plan` | 计划模式，只读操作，不执行写入 | 提示用户确认 |
+| `acceptEdits` | 自动接受文件编辑，Bash 仍需确认 | 文件编辑自动允许 |
+| `bypassPermissions` | 跳过所有权限检查（安全检查除外） | 自动允许 |
+| `dontAsk` | 遇到需要询问的操作直接拒绝 | 转换为 `deny` |
+| `auto` | 使用 AI 分类器自动决策（内部专用） | 调用 YOLO 分类器 |
+
+`dontAsk` 模式的处理逻辑位于 `hasPermissionsToUseTool` 的后处理阶段（第 505–516 行）：
+
+```typescript
+// src/utils/permissions/permissions.ts:505
+if (result.behavior === 'ask') {
+  const appState = context.getAppState()
+  if (appState.toolPermissionContext.mode === 'dontAsk') {
+    return {
+      behavior: 'deny',
+      decisionReason: { type: 'mode', mode: 'dontAsk' },
+      message: DONT_ASK_REJECT_MESSAGE(tool.name),
+    }
+  }
+```
+
+---
+
+## 5.6 权限规则的存储与匹配
+
+权限规则分为三类：`alwaysAllowRules`、`alwaysDenyRules`、`alwaysAskRules`，每类规则都按**来源**分层存储（`src/utils/permissions/permissions.ts:109`）：
+
+```typescript
+// src/utils/permissions/permissions.ts:109
+const PERMISSION_RULE_SOURCES = [
+  ...SETTING_SOURCES,  // 全局/项目/本地 settings.json
+  'cliArg',            // --allowedTools CLI 参数
+  'command',           // /allow 等斜杠命令
+  'session',           // 当前会话临时允许
+]
+```
+
+规则格式为 `工具名(内容)` 字符串，例如：
+- `Bash` — 允许/拒绝整个 Bash 工具
+- `Bash(prefix:git *)` — 允许前缀为 `git ` 的命令
+- `mcp__server1` — 允许某 MCP 服务器的所有工具
+- `mcp__server1__write` — 允许某 MCP 服务器的特定工具
+
+`toolMatchesRule` 函数（第 238–269 行）负责规则匹配，支持精确匹配和 MCP 服务器级通配符。
+
+---
+
+## 5.7 三种处理器：ask 决策的下游
+
+当 `hasPermissionsToUseTool` 返回 `ask` 时，`useCanUseTool` 中的 `switch` 分支会根据上下文选择不同的处理器：
+
+### 5.7.1 Coordinator 处理器
+
+当 `appState.toolPermissionContext.awaitAutomatedChecksBeforeDialog` 为真时（多智能体协调器模式），首先调用 `handleCoordinatorPermission`（`src/hooks/toolPermission/handlers/coordinatorHandler.ts`）。协调器会在展示用户对话框之前，先等待自动化检查（BASH_CLASSIFIER）的结果，避免闪烁或不必要的打扰。
+
+### 5.7.2 Swarm 处理器
+
+`handleSwarmWorkerPermission`（`src/hooks/toolPermission/handlers/swarmWorkerHandler.ts`）处理 Swarm Worker（无头子 Agent）场景。Worker 没有用户界面，当权限检查需要用户输入时，它会：
+1. 先尝试运行 `PermissionRequest` hooks（外部程序有机会自动批准）
+2. 若 hooks 未决策，且 `shouldAvoidPermissionPrompts` 为真，则自动拒绝
+
+### 5.7.3 交互式处理器
+
+`handleInteractivePermission`（`src/hooks/toolPermission/handlers/interactiveHandler.ts:57`）是最复杂的处理器，用于标准交互式 REPL 模式。它同时发起多路竞速：
+
+```mermaid
+flowchart LR
+    ASK[ask 决策] --> Q[推入 ToolUseConfirm 队列]
+    Q --> P1[本地 CLI 对话框]
+    Q --> P2[Bridge 远程响应 claude.ai]
+    Q --> P3[Channel 响应 Telegram/iMessage]
+    Q --> P4[PermissionRequest hooks 异步]
+    Q --> P5[BASH_CLASSIFIER 异步分类器]
+    P1 & P2 & P3 & P4 & P5 -->|claim 竞速| RESOLVE[resolveOnce 决定结果]
+```
+
+`resolveOnce` 通过 `createResolveOnce` 工厂函数（`src/hooks/toolPermission/PermissionContext.ts`）创建，保证多路竞速中只有第一个赢家的结果被采用：
+
+```typescript
+// src/hooks/toolPermission/handlers/interactiveHandler.ts:70
+const { resolve: resolveOnce, isResolved, claim } = createResolveOnce(resolve)
+```
+
+五路竞速的优先顺序由 `claim()` 原子操作保证——最先调用 `claim()` 的路径获胜，其余路径调用 `if (!claim()) return` 后静默退出。
+
+---
+
+## 5.8 BASH_CLASSIFIER：推测性预检
+
+当 `BASH_CLASSIFIER` feature flag 开启时，系统会在权限对话框展示之前，**并发地**启动一个 AI 分类器检查 Bash 命令是否匹配已有的允许规则。这个机制分为两种触发路径：
+
+**路径一：预先推测（`peekSpeculativeClassifierCheck`）**
+
+在 `useCanUseTool` 的 `ask` 分支中（`src/hooks/useCanUseTool.tsx:126-158`），如果 `!awaitAutomatedChecksBeforeDialog`（非协调器模式），会先 race 一个已存在的推测性 Promise：
+
+```typescript
+// src/hooks/useCanUseTool.tsx:127
+const speculativePromise = peekSpeculativeClassifierCheck(
+  (input as { command: string }).command
+)
+if (speculativePromise) {
+  const raceResult = await Promise.race([
+    speculativePromise.then(_temp),
+    new Promise(_temp2),  // 2秒超时
+  ])
+  if (raceResult.type === 'result' && raceResult.result.matches &&
+      raceResult.result.confidence === 'high') {
+    // 分类器高置信度匹配，直接允许
+    consumeSpeculativeClassifierCheck(...)
+    resolve(ctx.buildAllow(...))
+    return
+  }
+}
+```
+
+**路径二：异步并发（`executeAsyncClassifierCheck`）**
+
+在交互式处理器中（第 433–530 行），分类器与用户对话框并行运行。如果分类器在用户点击之前完成检查并批准，UI 会短暂显示一个绿色勾（`classifierAutoApproved: true`），然后自动关闭对话框——用户可能甚至来不及看到就已经被自动批准了。
+
+---
+
+## 5.9 Auto 模式：YOLO 分类器
+
+`auto` 模式（内部专用，`TRANSCRIPT_CLASSIFIER` feature flag）使用 `classifyYoloAction`（`src/utils/permissions/yoloClassifier.ts`）对工具调用进行 AI 分类。在进入分类器之前，有两条快速通道可以跳过昂贵的 API 调用：
+
+**快速通道一：acceptEdits 模拟**（第 601–656 行）
+
+```typescript
+// src/utils/permissions/permissions.ts:606
+const acceptEditsResult = await tool.checkPermissions(parsedInput, {
+  ...context,
+  getAppState: () => ({
+    ...state,
+    toolPermissionContext: { ...state.toolPermissionContext, mode: 'acceptEdits' }
+  }),
+})
+if (acceptEditsResult.behavior === 'allow') {
+  // 该工具在 acceptEdits 模式下会被允许，跳过分类器
+  return { behavior: 'allow', decisionReason: { type: 'mode', mode: 'auto' } }
+}
+```
+
+**快速通道二：安全工具白名单**（第 660–686 行）
+
+部分工具（如 Read、LS 等只读工具）被预置在 `isAutoModeAllowlistedTool` 中，直接跳过分类器。
+
+若两条快速通道均未命中，才调用 `classifyYoloAction` 发起 API 请求。分类器失效时有"铁门"（`tengu_iron_gate_closed`）feature flag 控制：`true` 时失效即拒绝（fail closed），`false` 时降级为正常权限提示（fail open）。
+
+连续拒绝追踪由 `DenialTrackingState`（`src/utils/permissions/denialTracking.ts`）管理，当连续拒绝次数超过 `DENIAL_LIMITS` 阈值时，回退为手动确认，避免死循环。
+
+---
+
+## 5.10 权限规则的持久化
+
+当用户在交互式对话框中选择"总是允许"（Always Allow）时，`handleUserAllow` 会调用 `persistPermissionUpdates`（`src/utils/permissions/PermissionUpdate.ts`），将规则写入相应的 settings 文件：
+
+- **全局规则**：写入 `~/.claude/settings.json`
+- **项目规则**：写入项目根目录的 `.claude/settings.json`
+- **本地规则**：写入 `.claude/settings.local.json`（不提交 git）
+- **会话规则**：只存在于当前进程的 `AppState` 中，不持久化
+
+同时通过 `setAppState` 更新运行时 `toolPermissionContext.alwaysAllowRules`，使规则立即生效而无需重启。
+
+---
+
+## 5.11 完整权限决策流程图
+
+```mermaid
+flowchart TD
+    START([工具调用请求]) --> HC[hasPermissionsToUseTool]
+    HC --> INNER[hasPermissionsToUseToolInner]
+
+    INNER --> D1{deny rule?}
+    D1 -->|是| RD1[return deny]
+    D1 -->|否| D2{ask rule?}
+    D2 -->|是| RD2[return ask]
+    D2 -->|否| D3[tool.checkPermissions]
+    D3 --> D4{结果?}
+    D4 -->|deny| RD4[return deny]
+    D4 -->|ask + safetyCheck| RD5[return ask - bypass免疫]
+    D4 -->|passthrough/ask| D5{bypassPermissions?}
+    D5 -->|是| RA1[return allow - bypass]
+    D5 -->|否| D6{alwaysAllowRule?}
+    D6 -->|是| RA2[return allow - rule]
+    D6 -->|否| RD6[return ask]
+
+    HC --> POST{后处理}
+    POST -->|allow| COUNT[重置连续拒绝计数]
+    POST -->|ask + dontAsk模式| DENY2[return deny]
+    POST -->|ask + auto模式| YOLO[classifyYoloAction]
+
+    YOLO --> YR{分类结果}
+    YR -->|白名单工具| RA3[return allow]
+    YR -->|acceptEdits快速通道| RA4[return allow]
+    YR -->|分类器允许| RA5[return allow]
+    YR -->|分类器拒绝| RD7[return deny]
+    YR -->|分类器不可用| GATE{iron_gate?}
+    GATE -->|closed| RD8[return deny]
+    GATE -->|open| FALLBACK[降级为 ask]
+
+    POST -->|ask 其他| HANDLER{选择处理器}
+    HANDLER -->|awaitAutomated| COORD[coordinatorHandler]
+    HANDLER -->|shouldAvoidPrompts| SWARM[swarmWorkerHandler]
+    HANDLER -->|交互式| INTER[interactiveHandler]
+
+    INTER --> RACE[多路竞速]
+    RACE --> L1[本地 CLI 对话框]
+    RACE --> L2[Bridge 远程 claude.ai]
+    RACE --> L3[Channel 远程 Telegram]
+    RACE --> L4[PermissionRequest hooks]
+    RACE --> L5[BASH_CLASSIFIER 异步]
+    L1 & L2 & L3 & L4 & L5 --> CLAIM[claim 竞速 → resolveOnce]
+```
+
+---
+
+## 小结
+
+Claude Code 的权限系统是一个层次分明的决策引擎，将安全性、灵活性与用户体验巧妙平衡：
+
+1. **优先级严格有序**：deny > safetyCheck > bypassPermissions > alwaysAllow > ask
+2. **多模式适配**：同一套代码通过 `PermissionMode` 支持从完全交互到完全自动的全谱场景
+3. **多端竞速**：交互式模式下 CLI/Web/Channel/Hooks/Classifier 五路并发，第一个响应赢得决策权
+4. **AI 增强**：auto 模式和 BASH_CLASSIFIER 将人工审批成本降至最低，同时通过快速通道和铁门机制控制 API 开销与安全边界
+5. **规则持久化**：用户的"总是允许"决策被分层写入 settings 文件，跨会话生效
+
+理解这套权限系统，是理解 Claude Code 如何在自主性与安全性之间取得平衡的关键。

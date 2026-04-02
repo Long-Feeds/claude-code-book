@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工具系统设计 - 解密 Claude Code</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.1/github-markdown.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script>hljs.highlightAll();</script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #f6f8fa;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+        }
+        .nav {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .nav a {
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .nav a:hover {
+            text-decoration: underline;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        .content {
+            background: white;
+            padding: 60px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .markdown-body {
+            box-sizing: border-box;
+            min-width: 200px;
+            max-width: 980px;
+            margin: 0 auto;
+        }
+        .pagination {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 60px;
+            padding-top: 30px;
+            border-top: 1px solid #e1e4e8;
+        }
+        .pagination a {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+        .pagination a:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+        }
+        .pagination .prev::before {
+            content: "← ";
+        }
+        .pagination .next::after {
+            content: " →";
+        }
+        @media (max-width: 768px) {
+            .content {
+                padding: 30px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <div class="nav-container">
+            <a href="../index.html">📘 解密 Claude Code</a>
+            <a href="../index.html#toc">目录</a>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="content">
+            <article class="markdown-body">
+<h1>第三章：工具系统设计</h1>
+
+<p>> Claude Code 的工具系统是其核心架构之一，定义了 AI 模型与宿主环境交互的完整协议。从类型定义到权限检查，从 Zod 模式验证到 React 渲染，工具系统优雅地将安全性、可扩展性和用户体验融为一体。</p>
+
+<h2>3.1 Tool 接口：系统的核心契约</h2>
+
+<p>所有工具的类型定义集中在 <code>src/Tool.ts</code>。核心是一个三参数泛型接口（<code>src/Tool.ts:362-366</code>）：</p>
+
+<pre><code class="language-typescript">export type Tool<
+  Input extends AnyObject = AnyObject,
+  Output = unknown,
+  P extends ToolProgressData = ToolProgressData,
+> = {
+  // ...
+}</code></pre>
+
+<p>三个类型参数的含义：
+<ul>
+<li><code>Input</code>：工具输入的 Zod Schema 类型，约束了模型能传递的参数结构</li>
+<li><code>Output</code>：工具执行结果的类型</li>
+<li><code>P</code>：流式进度消息的类型，用于长时间运行操作的实时反馈</li>
+</ul></p>
+
+<code>AnyObject</code> 被定义为 <code>z.ZodType<{ [key: string]: unknown }></code>（<code>src/Tool.ts:343</code>），确保所有工具输入都是可 JSON 化的对象。
+
+<h2>3.2 Tool 接口的关键方法</h2>
+
+<h3>call()：核心执行方法</h3>
+
+<pre><code class="language-typescript">call(
+  args: z.infer<Input>,
+  context: ToolUseContext,
+  canUseTool: CanUseToolFn,
+  parentMessage: AssistantMessage,
+  onProgress?: ToolCallProgress<P>,
+): Promise<ToolResult<Output>></code></pre>
+
+<code>call()</code> 接收五个参数。其中 <code>canUseTool</code> 是一个回调函数，允许工具在执行过程中动态请求额外权限（例如 AgentTool 为子代理请求权限）。<code>onProgress</code> 是可选的流式进度回调，用于向 UI 推送中间状态。
+
+<h3>checkPermissions()：权限决策</h3>
+
+<pre><code class="language-typescript">checkPermissions(
+  input: z.infer<Input>,
+  context: ToolUseContext,
+): Promise<PermissionResult></code></pre>
+
+<p>这是工具<strong>特定</strong>权限逻辑的入口。通用权限逻辑（模式检查、规则匹配）在 <code>permissions.ts</code> 中，而工具特定的判断（例如 BashTool 解析命令语义）在这里实现。</p>
+
+<h3>validateInput()：语义验证</h3>
+
+<pre><code class="language-typescript">validateInput?(
+  input: z.infer<Input>,
+  context: ToolUseContext,
+): Promise<ValidationResult></code></pre>
+
+<p>在 <code>checkPermissions()</code> 之前调用，用于验证输入的语义合法性（而非 Zod 提供的结构验证）。例如检查文件路径是否合理、命令是否包含禁止的模式。</p>
+
+<h3>isReadOnly() 和 isDestructive()</h3>
+
+<pre><code class="language-typescript">isReadOnly(input: z.infer<Input>): boolean
+isDestructive?(input: z.infer<Input>): boolean</code></pre>
+
+<p>这两个方法用于工具分类。<code>isReadOnly</code> 返回 <code>true</code> 的工具（如 FileReadTool、GrepTool）在 <code>--permission-mode=read-only</code> 下无需询问用户。<code>isDestructive</code> 标记不可逆操作（删除、覆盖写入、发送消息），会在 UI 中以特殊样式提示用户。</p>
+
+<p>注意 <code>isDestructive</code> 是可选方法（默认为 <code>false</code>），而 <code>isReadOnly</code> 是必须实现的方法，默认值由 <code>buildTool()</code> 提供（<code>src/Tool.ts:757-769</code>）。</p>
+
+<h3>prompt()：系统提示生成</h3>
+
+<pre><code class="language-typescript">prompt(options: {
+  getToolPermissionContext: () => Promise<ToolPermissionContext>
+  tools: Tools
+  agents: AgentDefinition[]
+  allowedAgentTypes?: string[]
+}): Promise<string></code></pre>
+
+<p>每个工具负责生成自己在系统提示中的描述文本。这使得工具能够根据当前权限上下文动态调整描述——例如在只读模式下，BashTool 的描述会省略写入相关的示例。</p>
+
+<h3>userFacingName()：显示名称</h3>
+
+<pre><code class="language-typescript">userFacingName(input: Partial<z.infer<Input>> | undefined): string</code></pre>
+
+<p>接收<strong>部分</strong>输入（因为流式传输时参数可能还未完整到达），返回用户界面展示的名称。例如 BashTool 会在执行 <code>git status</code> 时显示 "Bash(git status)" 而非纯粹的 "Bash"。</p>
+
+<h2>3.3 ToolResult 类型</h2>
+
+<p>工具执行结果被包装在 <code>ToolResult<T></code> 中（<code>src/Tool.ts:321-336</code>）：</p>
+
+<pre><code class="language-typescript">export type ToolResult<T> = {
+  data: T
+  newMessages?: (UserMessage | AssistantMessage | AttachmentMessage | SystemMessage)[]
+  contextModifier?: (context: ToolUseContext) => ToolUseContext
+  mcpMeta?: {
+    _meta?: Record<string, unknown>
+    structuredContent?: Record<string, unknown>
+  }
+}</code></pre>
+
+<code>contextModifier</code> 是一个强大但受限的能力——工具可以通过它修改后续工具调用的上下文（例如切换工作目录），但只对非并发安全的工具有效（注释中明确说明：<code>contextModifier is only honored for tools that aren't concurrency safe</code>）。
+
+<h2>3.4 ToolUseContext：运行时上下文对象</h2>
+
+<code>ToolUseContext</code> 是传递给每个工具调用的运行时"环境"，包含数十个字段（<code>src/Tool.ts:158-300</code>）。主要分组如下：
+
+<strong>配置选项</strong>
+<pre><code class="language-typescript">options: {
+  commands: Command[]
+  debug: boolean
+  mainLoopModel: string
+  tools: Tools
+  verbose: boolean
+  thinkingConfig: ThinkingConfig
+  mcpClients: MCPServerConnection[]
+  isNonInteractiveSession: boolean
+  // ...
+}</code></pre>
+
+<strong>状态访问</strong>
+<pre><code class="language-typescript">abortController: AbortController      // 用于取消正在执行的工具
+readFileState: FileStateCache          // 文件读取缓存（用于检测过期写入）
+getAppState(): AppState
+setAppState(f: (prev: AppState) => AppState): void
+messages: Message[]                    // 完整的对话历史</code></pre>
+
+<strong>UI 回调</strong>（仅交互模式可用）
+<pre><code class="language-typescript">setToolJSX?: SetToolJSXFn             // 向 UI 注入自定义 React 节点
+addNotification?: (notif: Notification) => void
+appendSystemMessage?: (...) => void
+sendOSNotification?: (...) => void</code></pre>
+
+<strong>子代理支持</strong>
+<pre><code class="language-typescript">agentId?: AgentId                     // 仅子代理设置
+agentType?: string                    // 子代理类型名
+setAppStateForTasks?: (...)           // 跨代理层级的状态更新</code></pre>
+
+<code>ToolUseContext</code> 设计为<strong>深度不可变</strong>（<code>DeepImmutable<...></code>）的权限上下文字段，确保工具不能篡改权限规则。
+
+<h2>3.5 buildTool()：工具构造辅助函数</h2>
+
+<p>直接实现 <code>Tool</code> 接口需要提供所有方法，包括许多有合理默认值的方法。<code>buildTool()</code> 解决了这个问题（<code>src/Tool.ts:783-792</code>）：</p>
+
+<pre><code class="language-typescript">export function buildTool<D extends AnyToolDef>(def: D): BuiltTool<D> {
+  return {
+    ...TOOL_DEFAULTS,
+    userFacingName: () => def.name,
+    ...def,
+  } as BuiltTool<D>
+}</code></pre>
+
+<p>默认值（<code>src/Tool.ts:757-769</code>，注释标注了安全策略为"fail-closed"）：
+<ul>
+<li><code>isEnabled</code> → <code>true</code></li>
+<li><code>isConcurrencySafe</code> → <code>false</code>（假设不并发安全）</li>
+<li><code>isReadOnly</code> → <code>false</code>（假设会写入）</li>
+<li><code>isDestructive</code> → <code>false</code></li>
+<li><code>checkPermissions</code> → 允许（把决策权交给通用权限系统）</li>
+<li><code>toAutoClassifierInput</code> → <code>''</code>（跳过安全分类器，安全相关的工具<strong>必须</strong>覆盖此方法）</li>
+<li><code>userFacingName</code> → <code>name</code></li>
+</ul></p>
+
+<code>ToolDef</code> 类型是 <code>Tool</code> 的偏应用版本，所有可被默认填充的方法都是可选的。
+
+<h2>3.6 工具注册与发现</h2>
+
+<p>所有工具在 <code>src/tools.ts</code> 中统一注册。<code>getAllBaseTools()</code> 函数是工具集合的真实来源（<code>src/tools.ts:193</code>）：</p>
+
+<pre><code class="language-typescript">export function getAllBaseTools(): Tools {
+  return [
+    AgentTool,
+    TaskOutputTool,
+    BashTool,
+    GrepTool,
+    FileReadTool,
+    FileEditTool,
+    FileWriteTool,
+    GlobTool,
+    // ...
+  ]
+}</code></pre>
+
+<p>动态工具（受特性标志或环境变量控制）通过条件 <code>require()</code> 在模块顶层注册，利用 <code>bun:bundle</code> 的死代码消除能力确保未启用的工具不会被打包（<code>src/tools.ts:16-135</code>）：</p>
+
+<pre><code class="language-typescript">const REPLTool = process.env.USER_TYPE === 'ant'
+  ? require('./tools/REPLTool/REPLTool.js').REPLTool
+  : null
+
+<p>const SleepTool = feature('PROACTIVE') || feature('KAIROS')
+  ? require('./tools/SleepTool/SleepTool.js').SleepTool
+  : null</code></pre></p>
+
+<p>MCP 工具则在运行时动态生成并加入工具集合，不在静态列表中。</p>
+
+<h2>3.7 Zod Schema 验证：lazySchema 模式</h2>
+
+<p>所有工具使用 Zod v4 定义输入 Schema，并搭配 <code>lazySchema()</code> 辅助函数延迟初始化（<code>src/tools/BashTool/BashTool.tsx:227</code>）：</p>
+
+<pre><code class="language-typescript">const fullInputSchema = lazySchema(() => z.strictObject({
+  command: z.string().describe('The command to execute'),
+  timeout: semanticNumber(z.number().optional()).describe(
+    <code>Optional timeout in milliseconds (max ${getMaxTimeoutMs()})</code>
+  ),
+  description: z.string().optional().describe(<code>...</code>),
+  run_in_background: semanticBoolean(z.boolean().optional()).describe(<code>...</code>),
+  dangerouslyDisableSandbox: semanticBoolean(z.boolean().optional()).describe('...'),
+}));</code></pre>
+
+<code>lazySchema()</code> 的作用是延迟 Schema 的创建，避免在模块加载时就调用需要配置读取的函数（如 <code>getMaxTimeoutMs()</code>）。<code>semanticNumber</code> 和 <code>semanticBoolean</code> 是自定义 Zod 装饰器，允许模型传入字符串形式的数字/布尔值（如 <code>"true"</code> 或 <code>"5000"</code>）并自动转换，增加对模型输出的容错性。
+
+<h2>3.8 典型工具解析：BashTool</h2>
+
+<p>BashTool 是系统中最复杂、最重要的工具（<code>src/tools/BashTool/BashTool.tsx</code>）。</p>
+
+<strong>Schema 设计的安全考量</strong>
+
+<code>_simulatedSedEdit</code> 字段是一个内部字段，永远不会暴露给模型（<code>src/tools/BashTool/BashTool.tsx:249-258</code>）：
+
+<pre><code class="language-typescript">// Always omit _simulatedSedEdit from the model-facing schema.
+// Exposing it would let the model bypass permission checks and the sandbox
+// by pairing an innocuous command with an arbitrary file write.
+const inputSchema = lazySchema(() =>
+  isBackgroundTasksDisabled
+    ? fullInputSchema().omit({ run_in_background: true, _simulatedSedEdit: true })
+    : fullInputSchema().omit({ _simulatedSedEdit: true })
+);</code></pre>
+
+<strong>命令语义分类</strong>
+
+<p>BashTool 维护了多个命令集合用于 UI 折叠显示（<code>src/tools/BashTool/BashTool.tsx:60-81</code>）：</p>
+
+<pre><code class="language-typescript">const BASH_SEARCH_COMMANDS = new Set(['find', 'grep', 'rg', 'ag', 'ack', 'locate', ...]);
+const BASH_READ_COMMANDS = new Set(['cat', 'head', 'tail', 'less', 'jq', 'awk', ...]);
+const BASH_LIST_COMMANDS = new Set(['ls', 'tree', 'du']);
+const BASH_SILENT_COMMANDS = new Set(['mv', 'cp', 'rm', 'mkdir', 'chmod', ...]);</code></pre>
+
+<code>isSearchOrReadBashCommand()</code> 函数解析管道命令（使用 bash AST 解析器），确定整个命令链是否为只读/搜索性质，从而决定是否在 UI 中折叠展示。
+
+<strong>权限系统</strong>
+
+<p>BashTool 的权限逻辑在 <code>src/tools/BashTool/bashPermissions.ts</code> 中，通过 bash AST 解析实现细粒度的命令语义理解——支持通配符规则（如 <code>git *</code>）、路径约束、操作符检查（防止 <code>safe-cmd && dangerous-cmd</code> 绕过）等。</p>
+
+<strong>输出 Schema</strong>
+
+<p>BashTool 的输出 Schema 同样完整（<code>src/tools/BashTool/BashTool.tsx:279-294</code>）：</p>
+
+<pre><code class="language-typescript">const outputSchema = lazySchema(() => z.object({
+  stdout: z.string(),
+  stderr: z.string(),
+  interrupted: z.boolean(),
+  backgroundTaskId: z.string().optional(),
+  persistedOutputPath: z.string().optional(), // 输出过大时持久化到磁盘
+  persistedOutputSize: z.number().optional(),
+  // ...
+}));</code></pre>
+
+<code>persistedOutputPath</code> 是一个重要的性能优化——当命令输出过大时，实际内容被写入临时文件，模型只收到文件路径和预览，避免撑爆上下文窗口。
+
+<h2>3.9 典型工具解析：FileReadTool</h2>
+
+<p>FileReadTool 是一个典型的只读工具（<code>src/tools/FileReadTool/FileReadTool.ts</code>）。</p>
+
+<p>输入 Schema 设计（<code>src/tools/FileReadTool/FileReadTool.ts:227-243</code>）：</p>
+
+<pre><code class="language-typescript">const inputSchema = lazySchema(() =>
+  z.strictObject({
+    file_path: z.string().describe('The absolute path to the file to read'),
+    offset: semanticNumber(z.number().int().nonnegative().optional()),
+    limit: semanticNumber(z.number().int().positive().optional()),
+    pages: z.string().optional(), // 仅 PDF 文件，如 "1-5"
+  })
+)</code></pre>
+
+<p>FileReadTool 的安全设计体现在两处：</p>
+
+<p>1. <strong>阻止设备文件</strong>（<code>src/tools/FileReadTool/FileReadTool.ts:98-115</code>）：显式列出 <code>/dev/zero</code>、<code>/dev/random</code>、<code>/dev/stdin</code> 等会导致进程挂起或无限输出的设备文件。</p>
+
+<p>2. <strong>maxResultSizeChars 设置为 Infinity</strong>：工具接口允许每个工具设置结果最大大小（超出则持久化到磁盘），但 FileReadTool 将此值设为 <code>Infinity</code> 并通过自身的 <code>offset</code>/<code>limit</code> 参数自我约束，避免"持久化→再读取→再持久化"的循环。</p>
+
+<h2>3.10 典型工具解析：AgentTool</h2>
+
+<p>AgentTool 是工具系统中最复杂的一个，它能够产生子代理（<code>src/tools/AgentTool/AgentTool.tsx</code>）。</p>
+
+<p>输入 Schema 具有三层结构（<code>src/tools/AgentTool/AgentTool.tsx:82-102</code>）：</p>
+
+<pre><code class="language-typescript">// 基础层：所有代理共有
+const baseInputSchema = lazySchema(() => z.object({
+  description: z.string(),     // 任务的3-5词描述
+  prompt: z.string(),          // 代理要执行的任务
+  subagent_type: z.string().optional(),
+  model: z.enum(['sonnet', 'opus', 'haiku']).optional(),
+  run_in_background: z.boolean().optional(),
+}));
+
+<p>// 扩展层：多代理参数（团队功能）
+// 通过 .merge() 组合，支持 name, team_name, mode 字段</p>
+
+<p>// 隔离层：worktree / remote 隔离模式
+// 通过 .extend() 添加 isolation 和 cwd 字段</code></pre></p>
+
+<p>AgentTool 使用 <code>bun:bundle</code> 的特性标志控制 <code>KAIROS</code> 模式下是否暴露 <code>cwd</code> 参数（<code>src/tools/AgentTool/AgentTool.tsx:111-113</code>）：</p>
+
+<pre><code class="language-typescript">const schema = feature('KAIROS')
+  ? fullInputSchema()
+  : fullInputSchema().omit({ cwd: true });</code></pre>
+
+<p>AgentTool 同样使用 <code>feature()</code> 来条件加载重量级的 <code>proactive</code> 模块：</p>
+
+<pre><code class="language-typescript">const proactiveModule = feature('PROACTIVE') || feature('KAIROS')
+  ? require('../../proactive/index.js')
+  : null;</code></pre>
+
+<h2>3.11 工具执行生命周期</h2>
+
+<pre><code class="language-mermaid">flowchart TD
+    A[模型输出 tool_use 块] --> B[反序列化 JSON 输入]
+    B --> C{Zod Schema 验证}
+    C -- 验证失败 --> D[返回错误给模型]
+    C -- 验证通过 --> E[调用 validateInput?]
+    E -- 验证失败 --> D
+    E -- 验证通过 --> F[调用 checkPermissions]
+    F -- 拒绝 --> G{交互模式?}
+    G -- 是 --> H[弹出权限对话框]
+    H -- 用户拒绝 --> I[renderToolUseRejectedMessage]
+    H -- 用户允许 --> J[调用 tool.call]
+    G -- 否 --> I
+    F -- 允许 --> J
+    J --> K{onProgress 回调}
+    K -- 实时更新 --> L[renderToolUseProgressMessage]
+    J --> M[返回 ToolResult]
+    M --> N[mapToolResultToToolResultBlockParam]
+    N --> O[发送给 Anthropic API]
+    M --> P[renderToolResultMessage]
+    P --> Q[在 REPL 中显示]</code></pre>
+
+<h2>3.12 工具分类体系</h2>
+
+<p>工具按照读写属性分为三类，这一分类直接影响权限模式下的行为：</p>
+
+<p>| 类别 | 代表工具 | isReadOnly | isDestructive | 权限要求 |
+|------|---------|-----------|--------------|---------|
+| 只读工具 | FileReadTool, GrepTool, GlobTool | <code>true</code> | <code>false</code> | read-only 模式下免询问 |
+| 安全写入 | FileEditTool, FileWriteTool | <code>false</code> | <code>false</code> | 默认需要询问（可添加规则） |
+| 破坏性工具 | BashTool（rm 命令）, FileWriteTool（覆盖）| <code>false</code> | <code>true</code>（部分） | 需要额外确认 |</p>
+
+<code>isDestructive</code> 的实现是<strong>基于输入的动态判断</strong>，而非静态属性。BashTool 会解析命令内容，FileWriteTool 会检查目标路径是否已存在。这种设计使权限系统能够在同一个工具的不同操作间做出差异化决策。
+
+<h2>3.13 工具搜索与延迟加载</h2>
+
+<code>Tool</code> 接口包含两个控制工具可见性的字段（<code>src/Tool.ts:438-449</code>）：
+
+<pre><code class="language-typescript">readonly shouldDefer?: boolean  // true = 需要先 ToolSearch，才能调用
+readonly alwaysLoad?: boolean   // true = 永远在初始提示中出现，不被延迟</code></pre>
+
+<p>当 <code>shouldDefer: true</code> 时，工具的完整 Schema 不会出现在初始系统提示中，只有工具名称和 <code>searchHint</code> 字段会被发送。模型需要先调用 <code>ToolSearch</code> 工具获取完整 Schema，再发起实际调用。这一机制减少了系统提示的 token 消耗，对于拥有大量 MCP 工具的场景尤为关键。</p>
+
+<pre><code class="language-typescript">searchHint?: string  // 3-10 词的关键词描述，用于 ToolSearch 的关键词匹配</code></pre>
+
+<p>这构成了一个三级工具发现体系：
+1. <strong>始终加载</strong>（<code>alwaysLoad: true</code>）：核心工具（Bash、Read、Edit 等）
+2. <strong>可搜索</strong>（<code>shouldDefer: true</code>）：专用工具，通过 ToolSearch 发现
+3. <strong>条件加载</strong>（特性标志控制）：实验性或用户群专属工具，在构建阶段消除</p>
+            </article>
+            
+            <div class="pagination">
+                <div><a href="02-startup.html" class="prev">上一章</a></div>
+                <div><a href="04-query-engine.html" class="next">下一章</a></div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
