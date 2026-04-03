@@ -159,151 +159,152 @@
 </ol>
 <p>文件的前 20 行揭示了一个精心设计的启动序列：</p>
 <p><code>src/main.tsx:1-20</code> — 在所有 import 评估完成之前，优先以副作用方式触发三个并行操作：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/main.tsx:9-20（精简）</span>
-<span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">profileCheckpoint</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;./utils/startupProfiler.js&#39;</span><span class="p">;</span>
-<span class="nx">profileCheckpoint</span><span class="p">(</span><span class="s1">&#39;main_tsx_entry&#39;</span><span class="p">);</span>
+<pre class="codehilite"><code class="language-typescript">// src/main.tsx:9-20（精简）
+import { profileCheckpoint } from './utils/startupProfiler.js';
+profileCheckpoint('main_tsx_entry');
 
-<span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">startMdmRawRead</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;./utils/settings/mdm/rawRead.js&#39;</span><span class="p">;</span>
-<span class="nx">startMdmRawRead</span><span class="p">();</span><span class="w">  </span><span class="c1">// 并行启动 MDM 策略读取（plutil/reg query 子进程）</span>
+import { startMdmRawRead } from './utils/settings/mdm/rawRead.js';
+startMdmRawRead();  // 并行启动 MDM 策略读取（plutil/reg query 子进程）
 
-<span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">startKeychainPrefetch</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;./utils/secureStorage/keychainPrefetch.js&#39;</span><span class="p">;</span>
-<span class="nx">startKeychainPrefetch</span><span class="p">();</span><span class="w">  </span><span class="c1">// 并行预取 macOS Keychain（OAuth token + 旧版 API key）</span>
-</code></pre></div>
+import { startKeychainPrefetch } from './utils/secureStorage/keychainPrefetch.js';
+startKeychainPrefetch();  // 并行预取 macOS Keychain（OAuth token + 旧版 API key）
+</code></pre>
 
 <p>注释中明确说明：macOS Keychain 的两次读取若串行执行约需 65ms，并行化可消除这部分启动延迟。这是一个以代码可读性换取启动性能的显式取舍，并通过 <code>eslint-disable custom-rules/no-top-level-side-effects</code> 注释标记为有意为之。</p>
 <p><code>src/main.tsx:74-82</code> — 使用 Bun 的 <code>feature()</code> 门控进行死代码消除：</p>
-<div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">coordinatorModeModule</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">feature</span><span class="p">(</span><span class="s1">&#39;COORDINATOR_MODE&#39;</span><span class="p">)</span>
-<span class="w">  </span><span class="o">?</span><span class="w"> </span><span class="nx">require</span><span class="p">(</span><span class="s1">&#39;./coordinator/coordinatorMode.js&#39;</span><span class="p">)</span>
-<span class="w">  </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span>
+<pre class="codehilite"><code class="language-typescript">const coordinatorModeModule = feature('COORDINATOR_MODE')
+  ? require('./coordinator/coordinatorMode.js')
+  : null;
 
-<span class="kd">const</span><span class="w"> </span><span class="nx">assistantModule</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">feature</span><span class="p">(</span><span class="s1">&#39;KAIROS&#39;</span><span class="p">)</span>
-<span class="w">  </span><span class="o">?</span><span class="w"> </span><span class="nx">require</span><span class="p">(</span><span class="s1">&#39;./assistant/index.js&#39;</span><span class="p">)</span>
-<span class="w">  </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span>
-</code></pre></div>
+const assistantModule = feature('KAIROS')
+  ? require('./assistant/index.js')
+  : null;
+</code></pre>
 
 <p><code>COORDINATOR_MODE</code>、<code>KAIROS</code>、<code>BRIDGE_MODE</code>、<code>PROACTIVE</code>、<code>DAEMON</code>、<code>VOICE_MODE</code> 等特性标志在构建时由 Bun 求值，未激活的分支在打包后的二进制中完全不存在。</p>
 <hr />
 <h2 id="_1">高层架构图</h2>
-<div class="codehilite"><pre><span></span><code><span class="n">graph</span><span class="w"> </span><span class="n">TB</span>
-<span class="w">    </span><span class="n">subgraph</span><span class="w"> </span><span class="err">入口层</span>
-<span class="w">        </span><span class="n">MAIN</span><span class="p">[</span><span class="s2">&quot;main.tsx</span><span class="se">\n</span><span class="s2">Commander.js CLI 解析</span><span class="se">\n</span><span class="s2">React/Ink 渲染器&quot;</span><span class="p">]</span>
-<span class="w">    </span><span class="n">end</span>
+<div class="mermaid">
+graph TB
+    subgraph 入口层
+        MAIN["main.tsx\nCommander.js CLI 解析\nReact/Ink 渲染器"]
+    end
 
-<span class="w">    </span><span class="n">subgraph</span><span class="w"> </span><span class="err">核心引擎</span>
-<span class="w">        </span><span class="n">QE</span><span class="p">[</span><span class="s2">&quot;QueryEngine.ts</span><span class="se">\n</span><span class="s2">LLM 查询引擎</span><span class="se">\n</span><span class="s2">流式响应 / 工具调用循环</span><span class="se">\n</span><span class="s2">重试 / Token 计数&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">QUERY</span><span class="p">[</span><span class="s2">&quot;query.ts</span><span class="se">\n</span><span class="s2">query() 函数</span><span class="se">\n</span><span class="s2">单次 API 调用封装&quot;</span><span class="p">]</span>
-<span class="w">    </span><span class="n">end</span>
+    subgraph 核心引擎
+        QE["QueryEngine.ts\nLLM 查询引擎\n流式响应 / 工具调用循环\n重试 / Token 计数"]
+        QUERY["query.ts\nquery() 函数\n单次 API 调用封装"]
+    end
 
-<span class="w">    </span><span class="n">subgraph</span><span class="w"> </span><span class="err">上下文层</span>
-<span class="w">        </span><span class="n">CTX</span><span class="p">[</span><span class="s2">&quot;context.ts</span><span class="se">\n</span><span class="s2">getSystemContext()</span><span class="se">\n</span><span class="s2">getUserContext()</span><span class="se">\n</span><span class="s2">git status / CLAUDE.md&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">BOOTSTRAP</span><span class="p">[</span><span class="s2">&quot;bootstrap/state.ts</span><span class="se">\n</span><span class="s2">全局可变状态</span><span class="se">\n</span><span class="s2">模型覆盖 / 会话信息&quot;</span><span class="p">]</span>
-<span class="w">    </span><span class="n">end</span>
+    subgraph 上下文层
+        CTX["context.ts\ngetSystemContext()\ngetUserContext()\ngit status / CLAUDE.md"]
+        BOOTSTRAP["bootstrap/state.ts\n全局可变状态\n模型覆盖 / 会话信息"]
+    end
 
-<span class="w">    </span><span class="n">subgraph</span><span class="w"> </span><span class="err">工具系统</span>
-<span class="w">        </span><span class="n">TOOLS</span><span class="p">[</span><span class="s2">&quot;tools.ts</span><span class="se">\n</span><span class="s2">工具注册表</span><span class="se">\n</span><span class="s2">getTools()&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">TOOLBASE</span><span class="p">[</span><span class="s2">&quot;Tool.ts</span><span class="se">\n</span><span class="s2">工具类型定义</span><span class="se">\n</span><span class="s2">ToolInput / PermissionResult&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">TOOLIMPLS</span><span class="p">[</span><span class="s2">&quot;tools/</span><span class="se">\n</span><span class="s2">~40 个工具实现</span><span class="se">\n</span><span class="s2">Bash / FileEdit / Glob / Grep</span><span class="se">\n</span><span class="s2">AgentTool / SkillTool / MCPTool</span><span class="se">\n</span><span class="s2">TaskCreate / SendMessage / ...&quot;</span><span class="p">]</span>
-<span class="w">    </span><span class="n">end</span>
+    subgraph 工具系统
+        TOOLS["tools.ts\n工具注册表\ngetTools()"]
+        TOOLBASE["Tool.ts\n工具类型定义\nToolInput / PermissionResult"]
+        TOOLIMPLS["tools/\n~40 个工具实现\nBash / FileEdit / Glob / Grep\nAgentTool / SkillTool / MCPTool\nTaskCreate / SendMessage / ..."]
+    end
 
-<span class="w">    </span><span class="n">subgraph</span><span class="w"> </span><span class="err">权限系统</span>
-<span class="w">        </span><span class="n">PERM</span><span class="p">[</span><span class="s2">&quot;hooks/toolPermission/</span><span class="se">\n</span><span class="s2">PermissionContext.ts</span><span class="se">\n</span><span class="s2">权限模式: default/plan/acceptEdits/bypassPermissions/dontAsk/auto&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">CANUSETOOL</span><span class="p">[</span><span class="s2">&quot;hooks/useCanUseTool.tsx</span><span class="se">\n</span><span class="s2">CanUseToolFn</span><span class="se">\n</span><span class="s2">每次工具调用前检查&quot;</span><span class="p">]</span>
-<span class="w">    </span><span class="n">end</span>
+    subgraph 权限系统
+        PERM["hooks/toolPermission/\nPermissionContext.ts\n权限模式: default/plan/acceptEdits/bypassPermissions/dontAsk/auto"]
+        CANUSETOOL["hooks/useCanUseTool.tsx\nCanUseToolFn\n每次工具调用前检查"]
+    end
 
-<span class="w">    </span><span class="n">subgraph</span><span class="w"> </span><span class="err">命令系统</span>
-<span class="w">        </span><span class="n">CMDS</span><span class="p">[</span><span class="s2">&quot;commands.ts</span><span class="se">\n</span><span class="s2">命令注册表</span><span class="se">\n</span><span class="s2">getCommands()&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">CMDIMPLS</span><span class="p">[</span><span class="s2">&quot;commands/</span><span class="se">\n</span><span class="s2">~50 个斜杠命令</span><span class="se">\n</span><span class="s2">/commit /review /compact</span><span class="se">\n</span><span class="s2">/mcp /memory /skills ...&quot;</span><span class="p">]</span>
-<span class="w">    </span><span class="n">end</span>
+    subgraph 命令系统
+        CMDS["commands.ts\n命令注册表\ngetCommands()"]
+        CMDIMPLS["commands/\n~50 个斜杠命令\n/commit /review /compact\n/mcp /memory /skills ..."]
+    end
 
-<span class="w">    </span><span class="n">subgraph</span><span class="w"> </span><span class="err">服务层</span>
-<span class="w">        </span><span class="n">API</span><span class="p">[</span><span class="s2">&quot;services/api/</span><span class="se">\n</span><span class="s2">Anthropic SDK 封装</span><span class="se">\n</span><span class="s2">File API / Bootstrap&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">MCP</span><span class="p">[</span><span class="s2">&quot;services/mcp/</span><span class="se">\n</span><span class="s2">MCP 服务器连接</span><span class="se">\n</span><span class="s2">官方注册表&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">OAUTH</span><span class="p">[</span><span class="s2">&quot;services/oauth/</span><span class="se">\n</span><span class="s2">OAuth 2.0 流程&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">LSP</span><span class="p">[</span><span class="s2">&quot;services/lsp/</span><span class="se">\n</span><span class="s2">Language Server Protocol&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">ANALYTICS</span><span class="p">[</span><span class="s2">&quot;services/analytics/</span><span class="se">\n</span><span class="s2">GrowthBook 特性开关&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">COMPACT</span><span class="p">[</span><span class="s2">&quot;services/compact/</span><span class="se">\n</span><span class="s2">上下文压缩&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">PLUGINS_SVC</span><span class="p">[</span><span class="s2">&quot;services/plugins/</span><span class="se">\n</span><span class="s2">插件加载器&quot;</span><span class="p">]</span>
-<span class="w">    </span><span class="n">end</span>
+    subgraph 服务层
+        API["services/api/\nAnthropic SDK 封装\nFile API / Bootstrap"]
+        MCP["services/mcp/\nMCP 服务器连接\n官方注册表"]
+        OAUTH["services/oauth/\nOAuth 2.0 流程"]
+        LSP["services/lsp/\nLanguage Server Protocol"]
+        ANALYTICS["services/analytics/\nGrowthBook 特性开关"]
+        COMPACT["services/compact/\n上下文压缩"]
+        PLUGINS_SVC["services/plugins/\n插件加载器"]
+    end
 
-<span class="w">    </span><span class="n">subgraph</span><span class="w"> </span><span class="err">多智能体系统</span>
-<span class="w">        </span><span class="n">AGENT</span><span class="p">[</span><span class="s2">&quot;tools/AgentTool/</span><span class="se">\n</span><span class="s2">子 Agent 生成</span><span class="se">\n</span><span class="s2">颜色管理 / 定义加载&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">COORDINATOR</span><span class="p">[</span><span class="s2">&quot;coordinator/</span><span class="se">\n</span><span class="s2">coordinatorMode.ts</span><span class="se">\n</span><span class="s2">多 Agent 协调&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">SWARM</span><span class="p">[</span><span class="s2">&quot;utils/swarm/</span><span class="se">\n</span><span class="s2">团队模式</span><span class="se">\n</span><span class="s2">TeamCreate / SendMessage&quot;</span><span class="p">]</span>
-<span class="w">    </span><span class="n">end</span>
+    subgraph 多智能体系统
+        AGENT["tools/AgentTool/\n子 Agent 生成\n颜色管理 / 定义加载"]
+        COORDINATOR["coordinator/\ncoordinatorMode.ts\n多 Agent 协调"]
+        SWARM["utils/swarm/\n团队模式\nTeamCreate / SendMessage"]
+    end
 
-<span class="w">    </span><span class="n">subgraph</span><span class="w"> </span><span class="n">IDE</span><span class="w"> </span><span class="err">集成</span>
-<span class="w">        </span><span class="n">BRIDGE</span><span class="p">[</span><span class="s2">&quot;bridge/</span><span class="se">\n</span><span class="s2">bridgeMain.ts</span><span class="se">\n</span><span class="s2">双向消息协议</span><span class="se">\n</span><span class="s2">VS Code / JetBrains&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">REPLBRIDGE</span><span class="p">[</span><span class="s2">&quot;bridge/replBridge.ts</span><span class="se">\n</span><span class="s2">REPL 会话桥接&quot;</span><span class="p">]</span>
-<span class="w">    </span><span class="n">end</span>
+    subgraph IDE 集成
+        BRIDGE["bridge/\nbridgeMain.ts\n双向消息协议\nVS Code / JetBrains"]
+        REPLBRIDGE["bridge/replBridge.ts\nREPL 会话桥接"]
+    end
 
-<span class="w">    </span><span class="n">subgraph</span><span class="w"> </span><span class="err">插件与技能</span>
-<span class="w">        </span><span class="n">PLUGINS</span><span class="p">[</span><span class="s2">&quot;plugins/</span><span class="se">\n</span><span class="s2">bundled/ + 第三方&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">SKILLS</span><span class="p">[</span><span class="s2">&quot;skills/</span><span class="se">\n</span><span class="s2">bundled/ + 用户自定义</span><span class="se">\n</span><span class="s2">SkillTool 执行&quot;</span><span class="p">]</span>
-<span class="w">    </span><span class="n">end</span>
+    subgraph 插件与技能
+        PLUGINS["plugins/\nbundled/ + 第三方"]
+        SKILLS["skills/\nbundled/ + 用户自定义\nSkillTool 执行"]
+    end
 
-<span class="w">    </span><span class="n">subgraph</span><span class="w"> </span><span class="err">持久化与状态</span>
-<span class="w">        </span><span class="n">MEMDIR</span><span class="p">[</span><span class="s2">&quot;memdir/</span><span class="se">\n</span><span class="s2">持久化记忆</span><span class="se">\n</span><span class="s2">自动记忆提取&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">STATE</span><span class="p">[</span><span class="s2">&quot;state/AppState.js</span><span class="se">\n</span><span class="s2">应用状态&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">HISTORY</span><span class="p">[</span><span class="s2">&quot;history.ts</span><span class="se">\n</span><span class="s2">对话历史&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">COSTTRACK</span><span class="p">[</span><span class="s2">&quot;cost-tracker.ts</span><span class="se">\n</span><span class="s2">Token 费用追踪&quot;</span><span class="p">]</span>
-<span class="w">    </span><span class="n">end</span>
+    subgraph 持久化与状态
+        MEMDIR["memdir/\n持久化记忆\n自动记忆提取"]
+        STATE["state/AppState.js\n应用状态"]
+        HISTORY["history.ts\n对话历史"]
+        COSTTRACK["cost-tracker.ts\nToken 费用追踪"]
+    end
 
-<span class="w">    </span><span class="n">subgraph</span><span class="w"> </span><span class="n">UI</span><span class="w"> </span><span class="err">层</span>
-<span class="w">        </span><span class="n">INK</span><span class="p">[</span><span class="s2">&quot;ink/</span><span class="se">\n</span><span class="s2">Ink 渲染器封装&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">COMPONENTS</span><span class="p">[</span><span class="s2">&quot;components/</span><span class="se">\n</span><span class="s2">~140 个 Ink UI 组件&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">SCREENS</span><span class="p">[</span><span class="s2">&quot;screens/</span><span class="se">\n</span><span class="s2">Doctor / REPL / Resume&quot;</span><span class="p">]</span>
-<span class="w">        </span><span class="n">HOOKS</span><span class="p">[</span><span class="s2">&quot;hooks/</span><span class="se">\n</span><span class="s2">React Hooks (~80个)&quot;</span><span class="p">]</span>
-<span class="w">    </span><span class="n">end</span>
+    subgraph UI 层
+        INK["ink/\nInk 渲染器封装"]
+        COMPONENTS["components/\n~140 个 Ink UI 组件"]
+        SCREENS["screens/\nDoctor / REPL / Resume"]
+        HOOKS["hooks/\nReact Hooks (~80个)"]
+    end
 
-<span class="w">    </span><span class="n">MAIN</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">QE</span>
-<span class="w">    </span><span class="n">MAIN</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">CTX</span>
-<span class="w">    </span><span class="n">MAIN</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">BOOTSTRAP</span>
-<span class="w">    </span><span class="n">MAIN</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">CMDS</span>
-<span class="w">    </span><span class="n">MAIN</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">TOOLS</span>
-<span class="w">    </span><span class="n">MAIN</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">INK</span>
+    MAIN --> QE
+    MAIN --> CTX
+    MAIN --> BOOTSTRAP
+    MAIN --> CMDS
+    MAIN --> TOOLS
+    MAIN --> INK
 
-<span class="w">    </span><span class="n">QE</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">QUERY</span>
-<span class="w">    </span><span class="n">QE</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">TOOLBASE</span>
-<span class="w">    </span><span class="n">QE</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">PERM</span>
-<span class="w">    </span><span class="n">QE</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">COSTTRACK</span>
-<span class="w">    </span><span class="n">QE</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">MEMDIR</span>
+    QE --> QUERY
+    QE --> TOOLBASE
+    QE --> PERM
+    QE --> COSTTRACK
+    QE --> MEMDIR
 
-<span class="w">    </span><span class="n">QUERY</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">API</span>
+    QUERY --> API
 
-<span class="w">    </span><span class="n">CTX</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">BOOTSTRAP</span>
-<span class="w">    </span><span class="n">CTX</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">MEMDIR</span>
+    CTX --> BOOTSTRAP
+    CTX --> MEMDIR
 
-<span class="w">    </span><span class="n">TOOLS</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">TOOLBASE</span>
-<span class="w">    </span><span class="n">TOOLS</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">TOOLIMPLS</span>
-<span class="w">    </span><span class="n">TOOLIMPLS</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">AGENT</span>
-<span class="w">    </span><span class="n">TOOLIMPLS</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">SKILLS</span>
-<span class="w">    </span><span class="n">TOOLIMPLS</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">MCP</span>
+    TOOLS --> TOOLBASE
+    TOOLS --> TOOLIMPLS
+    TOOLIMPLS --> AGENT
+    TOOLIMPLS --> SKILLS
+    TOOLIMPLS --> MCP
 
-<span class="w">    </span><span class="n">PERM</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">CANUSETOOL</span>
+    PERM --> CANUSETOOL
 
-<span class="w">    </span><span class="n">CMDS</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">CMDIMPLS</span>
-<span class="w">    </span><span class="n">CMDIMPLS</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">COMPACT</span>
+    CMDS --> CMDIMPLS
+    CMDIMPLS --> COMPACT
 
-<span class="w">    </span><span class="n">AGENT</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">COORDINATOR</span>
-<span class="w">    </span><span class="n">AGENT</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">SWARM</span>
+    AGENT --> COORDINATOR
+    AGENT --> SWARM
 
-<span class="w">    </span><span class="n">API</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">OAUTH</span>
-<span class="w">    </span><span class="n">MCP</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">LSP</span>
-<span class="w">    </span><span class="n">ANALYTICS</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">BOOTSTRAP</span>
+    API --> OAUTH
+    MCP --> LSP
+    ANALYTICS --> BOOTSTRAP
 
-<span class="w">    </span><span class="n">BRIDGE</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">REPLBRIDGE</span>
-<span class="w">    </span><span class="n">MAIN</span><span class="w"> </span><span class="o">-.-&gt;|</span><span class="n">feature</span><span class="w"> </span><span class="n">BRIDGE_MODE</span><span class="o">|</span><span class="w"> </span><span class="n">BRIDGE</span>
+    BRIDGE --> REPLBRIDGE
+    MAIN -.->|feature BRIDGE_MODE| BRIDGE
 
-<span class="w">    </span><span class="n">PLUGINS</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">PLUGINS_SVC</span>
-<span class="w">    </span><span class="n">SKILLS</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">PLUGINS</span>
+    PLUGINS --> PLUGINS_SVC
+    SKILLS --> PLUGINS
 
-<span class="w">    </span><span class="n">STATE</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">HISTORY</span>
-<span class="w">    </span><span class="n">MAIN</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">STATE</span>
+    STATE --> HISTORY
+    MAIN --> STATE
 
-<span class="w">    </span><span class="n">INK</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">COMPONENTS</span>
-<span class="w">    </span><span class="n">COMPONENTS</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">HOOKS</span>
-<span class="w">    </span><span class="n">SCREENS</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">INK</span>
-</code></pre></div>
+    INK --> COMPONENTS
+    COMPONENTS --> HOOKS
+    SCREENS --> INK
+</div>
 
 <hr />
 <h2 id="_2">核心子系统详解</h2>
@@ -319,8 +320,8 @@
 </ul>
 <p>QueryEngine 还负责：Token 计数、费用追踪、重试逻辑（指数退避）、thinking 模式、快速模式（haiku 模型切换）、以及对话历史的持久化。</p>
 <p><code>src/QueryEngine.ts:1-8</code> — 文件开头即使用 <code>feature()</code> 门控，显示其与 Bun 构建系统的深度集成：</p>
-<div class="codehilite"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">feature</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;bun:bundle&#39;</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">import { feature } from 'bun:bundle'
+</code></pre>
 
 <h3 id="2">2. 上下文系统 — 系统提示的组装</h3>
 <p><code>src/context.ts</code> 提供两个关键函数，两者均使用 <code>lodash memoize</code> 缓存，确保单次会话内只计算一次：</p>
@@ -399,10 +400,10 @@
 <li><strong><code>src/utils/swarm/</code></strong>：团队模式实现，包括 <code>TeamCreateTool</code>（创建 Agent 团队）和重连逻辑</li>
 </ul>
 <p><code>src/main.tsx:64-72</code> 中的懒加载模式避免了这些重量级模块的循环依赖：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// 懒加载避免循环依赖: teammate.ts -&gt; AppState.tsx -&gt; ... -&gt; main.tsx</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">getTeammateUtils</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">require</span><span class="p">(</span><span class="s1">&#39;./utils/teammate.js&#39;</span><span class="p">)</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">getTeammatePromptAddendum</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">require</span><span class="p">(</span><span class="s1">&#39;./utils/swarm/teammatePromptAddendum.js&#39;</span><span class="p">)</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// 懒加载避免循环依赖: teammate.ts -&gt; AppState.tsx -&gt; ... -&gt; main.tsx
+const getTeammateUtils = () =&gt; require('./utils/teammate.js')
+const getTeammatePromptAddendum = () =&gt; require('./utils/swarm/teammatePromptAddendum.js')
+</code></pre>
 
 <h3 id="6-bridge-ide">6. Bridge — IDE 的眼睛和手</h3>
 <p><code>src/bridge/</code> 目录（约 30 个文件）实现了 Claude Code 与 IDE 扩展之间的双向通信协议：</p>
@@ -436,56 +437,58 @@
 <p><code>src/context/</code> 目录中的 Context Provider 管理跨组件状态：<code>modalContext.tsx</code>、<code>QueuedMessageContext.tsx</code>、<code>mailbox.tsx</code>（Agent 消息信箱）等。</p>
 <hr />
 <h2 id="_3">启动序列</h2>
-<div class="codehilite"><pre><span></span><code><span class="n">sequenceDiagram</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">OS</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="err">操作系统</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">MAIN</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="n">main</span><span class="p">.</span><span class="n">tsx</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">MDM</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="n">MDM</span><span class="w"> </span><span class="err">策略读取</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">KC</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="n">Keychain</span><span class="w"> </span><span class="err">预取</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">GB</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="n">GrowthBook</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">API</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="n">Anthropic</span><span class="w"> </span><span class="n">API</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">INK</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="n">Ink</span><span class="w"> </span><span class="err">渲染器</span>
+<div class="mermaid">
+sequenceDiagram
+    participant OS as 操作系统
+    participant MAIN as main.tsx
+    participant MDM as MDM 策略读取
+    participant KC as Keychain 预取
+    participant GB as GrowthBook
+    participant API as Anthropic API
+    participant INK as Ink 渲染器
 
-<span class="w">    </span><span class="n">OS</span><span class="o">-&gt;&gt;</span><span class="n">MAIN</span><span class="o">:</span><span class="w"> </span><span class="err">执行二进制</span>
-<span class="w">    </span><span class="n">MAIN</span><span class="o">-&gt;&gt;</span><span class="n">MDM</span><span class="o">:</span><span class="w"> </span><span class="n">startMdmRawRead</span><span class="p">()</span><span class="err">（异步，非阻塞）</span>
-<span class="w">    </span><span class="n">MAIN</span><span class="o">-&gt;&gt;</span><span class="n">KC</span><span class="o">:</span><span class="w"> </span><span class="n">startKeychainPrefetch</span><span class="p">()</span><span class="err">（异步，非阻塞）</span>
-<span class="w">    </span><span class="n">Note</span><span class="w"> </span><span class="n">over</span><span class="w"> </span><span class="n">MAIN</span><span class="o">:</span><span class="w"> </span><span class="err">继续评估其余</span><span class="w"> </span><span class="n">imports</span><span class="err">（</span><span class="o">~</span><span class="mi">135</span><span class="n">ms</span><span class="err">）</span>
-<span class="w">    </span><span class="n">MAIN</span><span class="o">-&gt;&gt;</span><span class="n">GB</span><span class="o">:</span><span class="w"> </span><span class="n">initializeGrowthBook</span><span class="p">()</span>
-<span class="w">    </span><span class="n">MAIN</span><span class="o">-&gt;&gt;</span><span class="n">API</span><span class="o">:</span><span class="w"> </span><span class="n">fetchBootstrapData</span><span class="p">()</span><span class="err">（并行）</span>
-<span class="w">    </span><span class="n">MAIN</span><span class="o">-&gt;&gt;</span><span class="n">API</span><span class="o">:</span><span class="w"> </span><span class="n">prefetchAllMcpResources</span><span class="p">()</span><span class="err">（并行）</span>
-<span class="w">    </span><span class="n">MAIN</span><span class="o">-&gt;&gt;</span><span class="n">KC</span><span class="o">:</span><span class="w"> </span><span class="n">ensureKeychainPrefetchCompleted</span><span class="p">()</span><span class="err">（等待结果）</span>
-<span class="w">    </span><span class="n">MAIN</span><span class="o">-&gt;&gt;</span><span class="n">INK</span><span class="o">:</span><span class="w"> </span><span class="n">renderAndRun</span><span class="p">()</span><span class="w"> </span><span class="err">—</span><span class="w"> </span><span class="err">挂载</span><span class="w"> </span><span class="n">React</span><span class="w"> </span><span class="err">组件树</span>
-<span class="w">    </span><span class="n">INK</span><span class="o">--&gt;&gt;</span><span class="n">OS</span><span class="o">:</span><span class="w"> </span><span class="err">终端</span><span class="w"> </span><span class="n">UI</span><span class="w"> </span><span class="err">就绪</span>
-</code></pre></div>
+    OS->>MAIN: 执行二进制
+    MAIN->>MDM: startMdmRawRead()（异步，非阻塞）
+    MAIN->>KC: startKeychainPrefetch()（异步，非阻塞）
+    Note over MAIN: 继续评估其余 imports（~135ms）
+    MAIN->>GB: initializeGrowthBook()
+    MAIN->>API: fetchBootstrapData()（并行）
+    MAIN->>API: prefetchAllMcpResources()（并行）
+    MAIN->>KC: ensureKeychainPrefetchCompleted()（等待结果）
+    MAIN->>INK: renderAndRun() — 挂载 React 组件树
+    INK-->>OS: 终端 UI 就绪
+</div>
 
 <hr />
 <h2 id="_4">数据流：一次工具调用的旅程</h2>
-<div class="codehilite"><pre><span></span><code><span class="n">sequenceDiagram</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">USER</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="err">用户输入</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">QE</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">QueryEngine</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">API</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Anthropic</span><span class="w"> </span><span class="n">API</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">PERM</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="err">权限系统</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">TOOL</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="err">工具实现</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">FS</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="err">文件系统</span><span class="o">/</span><span class="n">Shell</span>
+<div class="mermaid">
+sequenceDiagram
+    participant USER as 用户输入
+    participant QE as QueryEngine
+    participant API as Anthropic API
+    participant PERM as 权限系统
+    participant TOOL as 工具实现
+    participant FS as 文件系统/Shell
 
-<span class="w">    </span><span class="n">USER</span><span class="o">-&gt;&gt;</span><span class="n">QE</span><span class="p">:</span><span class="w"> </span><span class="err">用户消息</span>
-<span class="w">    </span><span class="n">QE</span><span class="o">-&gt;&gt;</span><span class="n">API</span><span class="p">:</span><span class="w"> </span><span class="err">发送消息（含工具定义）</span>
-<span class="w">    </span><span class="n">API</span><span class="o">--&gt;&gt;</span><span class="n">QE</span><span class="p">:</span><span class="w"> </span><span class="err">流式响应（</span><span class="n">SSE</span><span class="err">）</span>
-<span class="w">    </span><span class="n">API</span><span class="o">--&gt;&gt;</span><span class="n">QE</span><span class="p">:</span><span class="w"> </span><span class="n">tool_use</span><span class="w"> </span><span class="err">内容块</span>
-<span class="w">    </span><span class="n">QE</span><span class="o">-&gt;&gt;</span><span class="n">PERM</span><span class="p">:</span><span class="w"> </span><span class="n">canUseTool</span><span class="p">(</span><span class="n">toolName</span><span class="p">,</span><span class="w"> </span><span class="n">input</span><span class="p">)</span>
-<span class="w">    </span><span class="n">alt</span><span class="w"> </span><span class="err">需要用户确认</span>
-<span class="w">        </span><span class="n">PERM</span><span class="o">--&gt;&gt;</span><span class="n">USER</span><span class="p">:</span><span class="w"> </span><span class="err">弹出权限确认</span><span class="w"> </span><span class="n">UI</span>
-<span class="w">        </span><span class="n">USER</span><span class="o">--&gt;&gt;</span><span class="n">PERM</span><span class="p">:</span><span class="w"> </span><span class="err">批准</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="err">拒绝</span>
-<span class="w">    </span><span class="n">end</span>
-<span class="w">    </span><span class="n">PERM</span><span class="o">--&gt;&gt;</span><span class="n">QE</span><span class="p">:</span><span class="w"> </span><span class="n">PermissionResult</span>
-<span class="w">    </span><span class="n">QE</span><span class="o">-&gt;&gt;</span><span class="n">TOOL</span><span class="p">:</span><span class="w"> </span><span class="k">tool</span><span class="o">.</span><span class="n">call</span><span class="p">(</span><span class="n">input</span><span class="p">,</span><span class="w"> </span><span class="n">context</span><span class="p">)</span>
-<span class="w">    </span><span class="n">TOOL</span><span class="o">-&gt;&gt;</span><span class="n">FS</span><span class="p">:</span><span class="w"> </span><span class="err">执行操作</span>
-<span class="w">    </span><span class="n">FS</span><span class="o">--&gt;&gt;</span><span class="n">TOOL</span><span class="p">:</span><span class="w"> </span><span class="err">结果</span>
-<span class="w">    </span><span class="n">TOOL</span><span class="o">--&gt;&gt;</span><span class="n">QE</span><span class="p">:</span><span class="w"> </span><span class="n">ToolResult</span>
-<span class="w">    </span><span class="n">QE</span><span class="o">-&gt;&gt;</span><span class="n">API</span><span class="p">:</span><span class="w"> </span><span class="n">tool_result</span><span class="w"> </span><span class="err">消息</span>
-<span class="w">    </span><span class="n">API</span><span class="o">--&gt;&gt;</span><span class="n">QE</span><span class="p">:</span><span class="w"> </span><span class="err">下一轮响应</span>
-<span class="w">    </span><span class="n">Note</span><span class="w"> </span><span class="n">over</span><span class="w"> </span><span class="n">QE</span><span class="p">,</span><span class="n">API</span><span class="p">:</span><span class="w"> </span><span class="err">循环直到纯文本响应</span>
-<span class="w">    </span><span class="n">QE</span><span class="o">--&gt;&gt;</span><span class="n">USER</span><span class="p">:</span><span class="w"> </span><span class="err">最终输出</span>
-</code></pre></div>
+    USER->>QE: 用户消息
+    QE->>API: 发送消息（含工具定义）
+    API-->>QE: 流式响应（SSE）
+    API-->>QE: tool_use 内容块
+    QE->>PERM: canUseTool(toolName, input)
+    alt 需要用户确认
+        PERM-->>USER: 弹出权限确认 UI
+        USER-->>PERM: 批准 / 拒绝
+    end
+    PERM-->>QE: PermissionResult
+    QE->>TOOL: tool.call(input, context)
+    TOOL->>FS: 执行操作
+    FS-->>TOOL: 结果
+    TOOL-->>QE: ToolResult
+    QE->>API: tool_result 消息
+    API-->>QE: 下一轮响应
+    Note over QE,API: 循环直到纯文本响应
+    QE-->>USER: 最终输出
+</div>
 
 <hr />
 <h2 id="_5">关键设计决策</h2>

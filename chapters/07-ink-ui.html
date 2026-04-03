@@ -152,9 +152,9 @@
 <hr />
 <h2 id="71-maintsx-ink">7.1 入口：从 main.tsx 到 Ink 实例</h2>
 <p><code>src/main.tsx</code> 是整个 CLI 的启动点。与浏览器端 React 调用 <code>ReactDOM.render()</code> 类似，Claude Code 使用 Ink 的 <code>render()</code> 函数将 React 树挂载到终端。<code>main.tsx</code> 第 34 行导入了类型定义：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/main.tsx:34</span>
-<span class="k">import</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">Root</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;./ink.js&#39;</span><span class="p">;</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// src/main.tsx:34
+import type { Root } from './ink.js';
+</code></pre>
 
 <p>实际的渲染启动封装在 <code>src/interactiveHelpers.ts</code> 的 <code>renderAndRun</code> 函数中，它负责创建 Ink 实例并将顶层组件树（<code>&lt;REPL&gt;</code> 或各种对话框）注入终端。</p>
 <p><code>src/ink.js</code> 是对外暴露的 Ink API 汇总文件，重新导出了 <code>Box</code>、<code>Text</code>、<code>useInput</code>、<code>useStdin</code>、<code>useTheme</code> 等核心接口，供所有组件使用。</p>
@@ -163,94 +163,94 @@
 <p>Claude Code 并未使用 npm 上的标准 <code>ink</code> 包，而是在 <code>src/ink/</code> 目录中维护了一套<strong>完全重写的 Ink 实现</strong>。核心文件是 <code>src/ink/ink.tsx</code>。</p>
 <h3 id="ink">Ink 类</h3>
 <p><code>src/ink/ink.tsx</code> 第 76 行定义了核心的 <code>Ink</code> 类：</p>
-<div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="kd">class</span><span class="w"> </span><span class="nx">Ink</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">container</span><span class="o">:</span><span class="w"> </span><span class="kt">FiberRoot</span><span class="p">;</span><span class="w">  </span><span class="c1">// React Fiber 根节点</span>
-<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">rootNode</span><span class="o">:</span><span class="w"> </span><span class="kt">dom.DOMElement</span><span class="p">;</span><span class="w">       </span><span class="c1">// 自定义 DOM 根节点</span>
-<span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">focusManager</span><span class="o">:</span><span class="w"> </span><span class="kt">FocusManager</span><span class="p">;</span><span class="w">    </span><span class="c1">// 焦点管理</span>
-<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">renderer</span><span class="o">:</span><span class="w"> </span><span class="kt">Renderer</span><span class="p">;</span><span class="w">             </span><span class="c1">// 字符渲染器</span>
-<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">stylePool</span><span class="o">:</span><span class="w"> </span><span class="kt">StylePool</span><span class="p">;</span><span class="w">  </span><span class="c1">// 样式对象池</span>
-<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">charPool</span><span class="o">:</span><span class="w"> </span><span class="kt">CharPool</span><span class="p">;</span><span class="w">             </span><span class="c1">// 字符对象池</span>
-<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">hyperlinkPool</span><span class="o">:</span><span class="w"> </span><span class="kt">HyperlinkPool</span><span class="p">;</span><span class="w">   </span><span class="c1">// 超链接对象池</span>
-<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">frontFrame</span><span class="o">:</span><span class="w"> </span><span class="kt">Frame</span><span class="p">;</span><span class="w">              </span><span class="c1">// 前缓冲区</span>
-<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">backFrame</span><span class="o">:</span><span class="w"> </span><span class="kt">Frame</span><span class="p">;</span><span class="w">               </span><span class="c1">// 后缓冲区</span>
-<span class="w">  </span><span class="c1">// ...</span>
-<span class="p">}</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">export default class Ink {
+  private readonly container: FiberRoot;  // React Fiber 根节点
+  private rootNode: dom.DOMElement;       // 自定义 DOM 根节点
+  readonly focusManager: FocusManager;    // 焦点管理
+  private renderer: Renderer;             // 字符渲染器
+  private readonly stylePool: StylePool;  // 样式对象池
+  private charPool: CharPool;             // 字符对象池
+  private hyperlinkPool: HyperlinkPool;   // 超链接对象池
+  private frontFrame: Frame;              // 前缓冲区
+  private backFrame: Frame;               // 后缓冲区
+  // ...
+}
+</code></pre>
 
 <p>其中<strong>双缓冲帧（front/back frame）</strong>是性能优化的关键：每次渲染先写入 backFrame，然后与 frontFrame 做 diff，只把变化的单元格输出到终端。这避免了全屏刷新，大幅减少写入量。</p>
 <h3 id="_1">渲染调度</h3>
 <p>渲染不是每次状态变化都立即触发，而是经过节流（<code>ink.tsx:212-216</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">deferredRender</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">()</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">queueMicrotask</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">onRender</span><span class="p">);</span>
-<span class="k">this</span><span class="p">.</span><span class="nx">scheduleRender</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">throttle</span><span class="p">(</span><span class="nx">deferredRender</span><span class="p">,</span><span class="w"> </span><span class="nx">FRAME_INTERVAL_MS</span><span class="p">,</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="nx">leading</span><span class="o">:</span><span class="w"> </span><span class="kt">true</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">trailing</span><span class="o">:</span><span class="w"> </span><span class="kt">true</span>
-<span class="p">});</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">const deferredRender = (): void =&gt; queueMicrotask(this.onRender);
+this.scheduleRender = throttle(deferredRender, FRAME_INTERVAL_MS, {
+  leading: true,
+  trailing: true
+});
+</code></pre>
 
 <p>帧间隔来自 <code>src/ink/constants.ts:2</code>：</p>
-<div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">FRAME_INTERVAL_MS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">16</span><span class="w">  </span><span class="c1">// ~60fps</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">export const FRAME_INTERVAL_MS = 16  // ~60fps
+</code></pre>
 
 <p>渲染使用 <code>queueMicrotask</code> 延迟到当前微任务队列末尾，这确保了 React 的 <code>useLayoutEffect</code> 在 <code>onRender</code> 触发前已经完成（比如 <code>useDeclaredCursor</code> 更新光标位置），避免光标跟踪落后一帧的问题。</p>
 <h3 id="react-fiber">React Fiber 容器</h3>
 <p>Ink 类在构造函数中创建 React Fiber 容器（<code>ink.tsx:262-269</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="k">this</span><span class="p">.</span><span class="nx">container</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">reconciler</span><span class="p">.</span><span class="nx">createContainer</span><span class="p">(</span>
-<span class="w">  </span><span class="k">this</span><span class="p">.</span><span class="nx">rootNode</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">ConcurrentRoot</span><span class="p">,</span><span class="w">  </span><span class="c1">// 使用 React 18 并发模式</span>
-<span class="w">  </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">  </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">  </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">  </span><span class="s1">&#39;id&#39;</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">noop</span><span class="p">,</span><span class="w"> </span><span class="nx">noop</span><span class="p">,</span><span class="w"> </span><span class="nx">noop</span><span class="p">,</span><span class="w"> </span><span class="nx">noop</span>
-<span class="p">);</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">this.container = reconciler.createContainer(
+  this.rootNode,
+  ConcurrentRoot,  // 使用 React 18 并发模式
+  null,
+  false,
+  null,
+  'id',
+  noop, noop, noop, noop
+);
+</code></pre>
 
 <p>使用了 React 的 <strong>Concurrent Root</strong>（并发模式），这意味着 Claude Code 的 UI 支持时间切片和 Suspense 等现代 React 特性。</p>
 <hr />
 <h2 id="73-reconciler">7.3 自定义 Reconciler</h2>
 <p><code>src/ink/reconciler.ts</code> 是整个渲染引擎的心脏，它使用 <code>react-reconciler</code> 包构建了一个非浏览器 DOM 的自定义渲染目标。</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/ink/reconciler.ts:224-239</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">reconciler</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">createReconciler</span><span class="o">&lt;</span>
-<span class="w">  </span><span class="nx">ElementNames</span><span class="p">,</span><span class="w">   </span><span class="c1">// 元素类型名称</span>
-<span class="w">  </span><span class="nx">Props</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">DOMElement</span><span class="p">,</span><span class="w">     </span><span class="c1">// 容器类型</span>
-<span class="w">  </span><span class="nx">DOMElement</span><span class="p">,</span><span class="w">     </span><span class="c1">// 实例类型</span>
-<span class="w">  </span><span class="nx">TextNode</span><span class="p">,</span>
-<span class="w">  </span><span class="c1">// ...</span>
-<span class="o">&gt;</span><span class="p">({</span>
-<span class="w">  </span><span class="nx">getRootHostContext</span><span class="o">:</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">({</span><span class="w"> </span><span class="nx">isInsideText</span><span class="o">:</span><span class="w"> </span><span class="kt">false</span><span class="w"> </span><span class="p">}),</span>
-<span class="w">  </span><span class="nx">prepareForCommit</span><span class="o">:</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">resetAfterCommit</span><span class="p">(</span><span class="nx">rootNode</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="c1">// 触发布局计算 + 渲染调度</span>
-<span class="w">    </span><span class="nx">rootNode</span><span class="p">.</span><span class="nx">onComputeLayout</span><span class="o">?</span><span class="p">.()</span>
-<span class="w">  </span><span class="p">},</span>
-<span class="w">  </span><span class="c1">// ...</span>
-<span class="p">})</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// src/ink/reconciler.ts:224-239
+const reconciler = createReconciler&lt;
+  ElementNames,   // 元素类型名称
+  Props,
+  DOMElement,     // 容器类型
+  DOMElement,     // 实例类型
+  TextNode,
+  // ...
+&gt;({
+  getRootHostContext: () =&gt; ({ isInsideText: false }),
+  prepareForCommit: () =&gt; null,
+  resetAfterCommit(rootNode) {
+    // 触发布局计算 + 渲染调度
+    rootNode.onComputeLayout?.()
+  },
+  // ...
+})
+</code></pre>
 
 <p><code>resetAfterCommit</code> 在每次 React 提交（commit）后触发布局计算，然后调度渲染帧。这是 React 更新 → Yoga 布局 → 终端输出三个阶段的衔接点。</p>
 <h3 id="dom">自定义 DOM 元素</h3>
 <p>Ink 定义了一套精简的"DOM"元素类型（<code>src/ink/dom.ts:19-26</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">ElementNames</span><span class="w"> </span><span class="o">=</span>
-<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="s1">&#39;ink-root&#39;</span><span class="w">          </span><span class="c1">// 根节点</span>
-<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="s1">&#39;ink-box&#39;</span><span class="w">           </span><span class="c1">// 块级容器（对应 React 的 &lt;Box&gt;）</span>
-<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="s1">&#39;ink-text&#39;</span><span class="w">          </span><span class="c1">// 文本节点（对应 &lt;Text&gt;）</span>
-<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="s1">&#39;ink-virtual-text&#39;</span><span class="w">  </span><span class="c1">// 虚拟文本（不占布局空间）</span>
-<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="s1">&#39;ink-link&#39;</span><span class="w">          </span><span class="c1">// 可点击链接</span>
-<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="s1">&#39;ink-progress&#39;</span><span class="w">      </span><span class="c1">// 进度条</span>
-<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="s1">&#39;ink-raw-ansi&#39;</span><span class="w">      </span><span class="c1">// 原始 ANSI 转义序列</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">export type ElementNames =
+  | 'ink-root'          // 根节点
+  | 'ink-box'           // 块级容器（对应 React 的 &lt;Box&gt;）
+  | 'ink-text'          // 文本节点（对应 &lt;Text&gt;）
+  | 'ink-virtual-text'  // 虚拟文本（不占布局空间）
+  | 'ink-link'          // 可点击链接
+  | 'ink-progress'      // 进度条
+  | 'ink-raw-ansi'      // 原始 ANSI 转义序列
+</code></pre>
 
 <p>每个 React 组件（如 <code>&lt;Box&gt;</code>、<code>&lt;Text&gt;</code>）最终映射为这些内部节点，由 reconciler 通过 <code>createInstance</code> 函数创建。</p>
 <hr />
 <h2 id="74-yoga-in-wasm">7.4 布局引擎：Yoga in WASM</h2>
 <p>Ink 使用 <strong>Yoga</strong>（Meta 开发的 Flexbox 布局引擎）计算元素的位置和大小。代码中的 <code>yogaNode</code> 引用（<code>dom.ts:14</code>）、<code>ink.tsx:247-257</code> 中的布局计算调用，以及 <code>src/native-ts/yoga-layout/</code> 目录中的 WASM 包，共同构成了布局计算层：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/ink/ink.tsx:247-257</span>
-<span class="k">this</span><span class="p">.</span><span class="nx">rootNode</span><span class="p">.</span><span class="nx">yogaNode</span><span class="p">.</span><span class="nx">setWidth</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">terminalColumns</span><span class="p">);</span>
-<span class="k">this</span><span class="p">.</span><span class="nx">rootNode</span><span class="p">.</span><span class="nx">yogaNode</span><span class="p">.</span><span class="nx">calculateLayout</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">terminalColumns</span><span class="p">);</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">ms</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">performance</span><span class="p">.</span><span class="nx">now</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">t0</span><span class="p">;</span>
-<span class="nx">recordYogaMs</span><span class="p">(</span><span class="nx">ms</span><span class="p">);</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// src/ink/ink.tsx:247-257
+this.rootNode.yogaNode.setWidth(this.terminalColumns);
+this.rootNode.yogaNode.calculateLayout(this.terminalColumns);
+const ms = performance.now() - t0;
+recordYogaMs(ms);
+</code></pre>
 
 <p>布局宽度设置为终端列数（<code>terminalColumns</code>），在终端窗口 <code>resize</code> 事件触发时重新计算。</p>
 <h3 id="_2">布局性能追踪</h3>
@@ -259,12 +259,12 @@
 <h2 id="75">7.5 屏幕渲染：差量输出</h2>
 <p><code>src/ink/render-node-to-output.ts</code> 将 DOM 树渲染为一个"屏幕缓冲区"，然后 <code>src/ink/render-to-screen.ts</code> 对比前后两帧，只输出有变化的部分。</p>
 <p><strong>布局位移检测</strong>（<code>render-node-to-output.ts:34-41</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="kd">let</span><span class="w"> </span><span class="nx">layoutShifted</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span>
+<pre class="codehilite"><code class="language-typescript">let layoutShifted = false
 
-<span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">didLayoutShift</span><span class="p">()</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">layoutShifted</span>
-<span class="p">}</span>
-</code></pre></div>
+export function didLayoutShift(): boolean {
+  return layoutShifted
+}
+</code></pre>
 
 <p>当检测到布局发生位移（元素位置/大小变化），渲染器会使用"全屏刷新"而不是差量更新，确保不会出现残影。稳态帧（如 spinner 旋转、时钟更新）通常不触发布局位移，可以走 O(changed cells) 的差量路径。</p>
 <h3 id="_3">滚动优化</h3>
@@ -274,7 +274,7 @@
 <p><code>src/screens/REPL.tsx</code> 是整个 UI 的核心组件，管理用户交互的完整生命周期。它的 import 段长达 280 行，汇集了几乎所有的 Hook 和子组件——这反映了它作为"顶层编排者"的地位。</p>
 <h3 id="repl">REPL 的主要职责</h3>
 <p>通过阅读 <code>REPL.tsx</code> 的 import 段，可以归纳出 REPL 管理的核心关注点：</p>
-<div class="codehilite"><pre><span></span><code>消息历史管理    ← useAssistantHistory, useTurnDiffs
+<pre class="codehilite"><code>消息历史管理    ← useAssistantHistory, useTurnDiffs
 查询执行        ← query(), handlePromptSubmit
 权限系统        ← PermissionRequest, useCanUseTool
 后台任务        ← useTasksV2, useBackgroundTaskNavigation
@@ -283,36 +283,37 @@
 费用追踪        ← useCostSummary, cost-tracker
 MCP 集成        ← useMergedClients, useMergedTools
 Vim 模式        ← useVimInput（在 PromptInput 中）
-</code></pre></div>
+</code></pre>
 
 <p>REPL 中的流式输出处理通过 <code>handleMessageFromStream</code> 函数实现，它逐条处理 <code>query()</code> 生成器 yield 出的消息，将助手的流式响应实时追加到 <code>messages</code> 状态数组中，触发 React 重渲染，最终通过 Ink 渲染到终端。</p>
 <hr />
 <h2 id="77">7.7 键位绑定系统</h2>
 <p><code>src/keybindings/</code> 目录实现了一套完整的、用户可自定义的键位绑定系统。</p>
 <h3 id="_4">架构分层</h3>
-<div class="codehilite"><pre><span></span><code><span class="nf">graph</span><span class="w"> </span><span class="n">LR</span>
-<span class="w">    </span><span class="n">A</span><span class="p">[</span><span class="n">defaultBindings</span><span class="p">.</span><span class="n">ts</span><span class="err">\</span><span class="n">n内置默认键位</span><span class="p">]</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">C</span><span class="p">[</span><span class="n">KeybindingProviderSetup</span><span class="p">.</span><span class="n">tsx</span><span class="err">\</span><span class="n">n合并</span><span class="o">+</span><span class="err">热重载</span><span class="p">]</span>
-<span class="w">    </span><span class="n">B</span><span class="p">[</span><span class="o">~/</span><span class="p">.</span><span class="n">claude</span><span class="o">/</span><span class="n">keybindings</span><span class="p">.</span><span class="n">json</span><span class="err">\</span><span class="n">n用户自定义</span><span class="p">]</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">C</span>
-<span class="w">    </span><span class="n">C</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">D</span><span class="p">[</span><span class="n">KeybindingContext</span><span class="p">.</span><span class="n">tsx</span><span class="err">\</span><span class="n">nReact</span><span class="w"> </span><span class="n">Context</span><span class="w"> </span><span class="err">提供键位表</span><span class="p">]</span>
-<span class="w">    </span><span class="n">D</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">E</span><span class="p">[</span><span class="n">useKeybinding</span><span class="p">.</span><span class="n">ts</span><span class="err">\</span><span class="n">n组件消费接口</span><span class="p">]</span>
-</code></pre></div>
+<div class="mermaid">
+graph LR
+    A[defaultBindings.ts\n内置默认键位] --> C[KeybindingProviderSetup.tsx\n合并+热重载]
+    B[~/.claude/keybindings.json\n用户自定义] --> C
+    C --> D[KeybindingContext.tsx\nReact Context 提供键位表]
+    D --> E[useKeybinding.ts\n组件消费接口]
+</div>
 
 <h3 id="_5">默认键位</h3>
 <p><code>src/keybindings/defaultBindings.ts:32</code> 定义了所有内置快捷键，按 Context 分组：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// 全局 Context</span>
-<span class="s1">&#39;ctrl+c&#39;</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;app:interrupt&#39;</span><span class="p">,</span>
-<span class="s1">&#39;ctrl+d&#39;</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;app:exit&#39;</span><span class="p">,</span>
-<span class="s1">&#39;ctrl+l&#39;</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;app:redraw&#39;</span><span class="p">,</span>
-<span class="s1">&#39;ctrl+t&#39;</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;app:toggleTodos&#39;</span><span class="p">,</span>
-<span class="s1">&#39;ctrl+o&#39;</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;app:toggleTranscript&#39;</span><span class="p">,</span>
-<span class="s1">&#39;ctrl+r&#39;</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;history:search&#39;</span><span class="p">,</span>
+<pre class="codehilite"><code class="language-typescript">// 全局 Context
+'ctrl+c': 'app:interrupt',
+'ctrl+d': 'app:exit',
+'ctrl+l': 'app:redraw',
+'ctrl+t': 'app:toggleTodos',
+'ctrl+o': 'app:toggleTranscript',
+'ctrl+r': 'history:search',
 
-<span class="c1">// Chat Context</span>
-<span class="s1">&#39;escape&#39;</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;chat:cancel&#39;</span><span class="p">,</span>
-<span class="s1">&#39;ctrl+x ctrl+k&#39;</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;chat:killAgents&#39;</span><span class="p">,</span><span class="w">  </span><span class="c1">// 和弦（chord）</span>
-<span class="s1">&#39;shift+tab&#39;</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;chat:cycleMode&#39;</span><span class="p">,</span>
-<span class="s1">&#39;enter&#39;</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;chat:submit&#39;</span><span class="p">,</span>
-</code></pre></div>
+// Chat Context
+'escape': 'chat:cancel',
+'ctrl+x ctrl+k': 'chat:killAgents',  // 和弦（chord）
+'shift+tab': 'chat:cycleMode',
+'enter': 'chat:submit',
+</code></pre>
 
 <p>注意 <code>ctrl+x ctrl+k</code> 是一个<strong>和弦（chord）</strong>——需要先按 <code>ctrl+x</code>，在 1 秒内再按 <code>ctrl+k</code>（超时配置在 <code>KeybindingProviderSetup.tsx:30</code>）。</p>
 <h3 id="context">键位 Context</h3>
@@ -324,27 +325,27 @@ Vim 模式        ← useVimInput（在 PromptInput 中）
 <p><code>src/hooks/useVimInput.ts</code> 实现了完整的 Vim 输入模式，这是 Claude Code 在 CLI 用户体验上的亮点之一。</p>
 <h3 id="_7">状态机设计</h3>
 <p>Vim 输入通过 <code>vimStateRef</code> 维护状态（<code>useVimInput.ts:35</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">vimStateRef</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">React</span><span class="p">.</span><span class="nx">useRef</span><span class="o">&lt;</span><span class="nx">VimState</span><span class="o">&gt;</span><span class="p">(</span><span class="nx">createInitialVimState</span><span class="p">())</span>
-<span class="kd">const</span><span class="w"> </span><span class="p">[</span><span class="nx">mode</span><span class="p">,</span><span class="w"> </span><span class="nx">setMode</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">useState</span><span class="o">&lt;</span><span class="nx">VimMode</span><span class="o">&gt;</span><span class="p">(</span><span class="s1">&#39;INSERT&#39;</span><span class="p">)</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">const vimStateRef = React.useRef&lt;VimState&gt;(createInitialVimState())
+const [mode, setMode] = useState&lt;VimMode&gt;('INSERT')
+</code></pre>
 
 <p><code>VimState</code> 包含当前模式（<code>INSERT</code>/<code>NORMAL</code>）和命令积累状态（如 <code>d2w</code> 这样的复合命令）。</p>
 <h3 id="_8">模式切换</h3>
-<div class="codehilite"><pre><span></span><code><span class="c1">// useVimInput.ts:77 - Escape 切换到 NORMAL 模式</span>
-<span class="nx">vimStateRef</span><span class="p">.</span><span class="nx">current</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">mode</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;NORMAL&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">command</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="kr">type</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;idle&#39;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<pre class="codehilite"><code class="language-typescript">// useVimInput.ts:77 - Escape 切换到 NORMAL 模式
+vimStateRef.current = { mode: 'NORMAL', command: { type: 'idle' } }
 
-<span class="c1">// useVimInput.ts:54 - i/a/o 等切换回 INSERT 模式</span>
-<span class="nx">vimStateRef</span><span class="p">.</span><span class="nx">current</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">mode</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;INSERT&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">insertedText</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="w"> </span><span class="p">}</span>
-</code></pre></div>
+// useVimInput.ts:54 - i/a/o 等切换回 INSERT 模式
+vimStateRef.current = { mode: 'INSERT', insertedText: '' }
+</code></pre>
 
 <h3 id="_9">方向键映射</h3>
 <p>在 NORMAL 模式下，方向键被映射为 Vim 动作（<code>useVimInput.ts:263-268</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="kd">let</span><span class="w"> </span><span class="nx">vimInput</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">input</span>
-<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">key</span><span class="p">.</span><span class="nx">leftArrow</span><span class="p">)</span><span class="w">  </span><span class="nx">vimInput</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;h&#39;</span>
-<span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">key</span><span class="p">.</span><span class="nx">rightArrow</span><span class="p">)</span><span class="w"> </span><span class="nx">vimInput</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;l&#39;</span>
-<span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">key</span><span class="p">.</span><span class="nx">upArrow</span><span class="p">)</span><span class="w">    </span><span class="nx">vimInput</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;k&#39;</span>
-<span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">key</span><span class="p">.</span><span class="nx">downArrow</span><span class="p">)</span><span class="w">  </span><span class="nx">vimInput</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;j&#39;</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">let vimInput = input
+if (key.leftArrow)  vimInput = 'h'
+else if (key.rightArrow) vimInput = 'l'
+else if (key.upArrow)    vimInput = 'k'
+else if (key.downArrow)  vimInput = 'j'
+</code></pre>
 
 <p>状态转换由 <code>src/vim/transitions.ts</code> 中的 <code>transition()</code> 函数驱动，支持完整的 Vim 动作和操作符组合，如 <code>d2w</code>（删除两个词）、<code>ci"</code>（改变引号内内容）等。</p>
 <p><code>src/components/VimTextInput.tsx</code> 是对 <code>useVimInput</code> 的组件封装，供 <code>PromptInput</code> 使用；普通的文本输入则走 <code>src/components/TextInput.tsx</code> 加上 <code>useTextInput</code> Hook。</p>
@@ -352,32 +353,32 @@ Vim 模式        ← useVimInput（在 PromptInput 中）
 <h2 id="79">7.9 费用追踪</h2>
 <p><code>src/cost-tracker.ts</code> 负责追踪当前会话的 API 费用，其数据来源于 <code>src/bootstrap/state.ts</code> 中的全局状态计数器。</p>
 <p>核心数据结构（<code>cost-tracker.ts:71-80</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="kr">type</span><span class="w"> </span><span class="nx">StoredCostState</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="nx">totalCostUSD</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span>
-<span class="w">  </span><span class="nx">totalAPIDuration</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span>
-<span class="w">  </span><span class="nx">totalAPIDurationWithoutRetries</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span>
-<span class="w">  </span><span class="nx">totalToolDuration</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span>
-<span class="w">  </span><span class="nx">totalLinesAdded</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span>
-<span class="w">  </span><span class="nx">totalLinesRemoved</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span>
-<span class="w">  </span><span class="nx">lastDuration</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">undefined</span>
-<span class="w">  </span><span class="nx">modelUsage</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">[</span><span class="nx">modelName</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">]</span><span class="o">:</span><span class="w"> </span><span class="nx">ModelUsage</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">undefined</span>
-<span class="p">}</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">type StoredCostState = {
+  totalCostUSD: number
+  totalAPIDuration: number
+  totalAPIDurationWithoutRetries: number
+  totalToolDuration: number
+  totalLinesAdded: number
+  totalLinesRemoved: number
+  lastDuration: number | undefined
+  modelUsage: { [modelName: string]: ModelUsage } | undefined
+}
+</code></pre>
 
 <p><code>src/costHook.ts</code> 中的 <code>useCostSummary</code> Hook 在 <code>process.exit</code> 事件时将费用摘要写入 stdout，并将状态持久化到项目配置文件（<code>cost-tracker.ts:15-22</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">useCostSummary</span><span class="p">(</span><span class="nx">getFpsMetrics</span><span class="o">?:</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">FpsMetrics</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">undefined</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="nx">useEffect</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">f</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">hasConsoleBillingAccess</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="nx">process</span><span class="p">.</span><span class="nx">stdout</span><span class="p">.</span><span class="nx">write</span><span class="p">(</span><span class="s1">&#39;\n&#39;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">formatTotalCost</span><span class="p">()</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s1">&#39;\n&#39;</span><span class="p">)</span>
-<span class="w">      </span><span class="p">}</span>
-<span class="w">      </span><span class="nx">saveCurrentSessionCosts</span><span class="p">(</span><span class="nx">getFpsMetrics</span><span class="o">?</span><span class="p">.())</span>
-<span class="w">    </span><span class="p">}</span>
-<span class="w">    </span><span class="nx">process</span><span class="p">.</span><span class="nx">on</span><span class="p">(</span><span class="s1">&#39;exit&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">f</span><span class="p">)</span>
-<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">process</span><span class="p">.</span><span class="nx">off</span><span class="p">(</span><span class="s1">&#39;exit&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">f</span><span class="p">)</span><span class="w"> </span><span class="p">}</span>
-<span class="w">  </span><span class="p">},</span><span class="w"> </span><span class="p">[])</span>
-<span class="p">}</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">export function useCostSummary(getFpsMetrics?: () =&gt; FpsMetrics | undefined): void {
+  useEffect(() =&gt; {
+    const f = () =&gt; {
+      if (hasConsoleBillingAccess()) {
+        process.stdout.write('\n' + formatTotalCost() + '\n')
+      }
+      saveCurrentSessionCosts(getFpsMetrics?.())
+    }
+    process.on('exit', f)
+    return () =&gt; { process.off('exit', f) }
+  }, [])
+}
+</code></pre>
 
 <p>费用状态可以在 Session 恢复时重建（<code>restoreCostStateForSession</code>），确保 <code>--resume</code> 重启后显示累计而非清零的费用。</p>
 <hr />
@@ -444,27 +445,28 @@ Vim 模式        ← useVimInput（在 PromptInput 中）
 <hr />
 <h2 id="711">7.11 消息渲染流水线</h2>
 <p>从用户按下 Enter 到流式 LLM 输出显示在终端，完整流水线如下：</p>
-<div class="codehilite"><pre><span></span><code><span class="n">sequenceDiagram</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">User</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="err">用户按键</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">PromptInput</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">PromptInput</span><span class="w"> </span><span class="err">组件</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">REPL</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">REPL</span><span class="o">.</span><span class="n">tsx</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">Query</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">query</span><span class="p">()</span><span class="w"> </span><span class="err">生成器</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">Ink</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Ink</span><span class="w"> </span><span class="err">渲染器</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">Term</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="err">终端</span>
+<div class="mermaid">
+sequenceDiagram
+    participant User as 用户按键
+    participant PromptInput as PromptInput 组件
+    participant REPL as REPL.tsx
+    participant Query as query() 生成器
+    participant Ink as Ink 渲染器
+    participant Term as 终端
 
-<span class="w">    </span><span class="n">User</span><span class="o">-&gt;&gt;</span><span class="n">PromptInput</span><span class="p">:</span><span class="w"> </span><span class="n">Enter</span>
-<span class="w">    </span><span class="n">PromptInput</span><span class="o">-&gt;&gt;</span><span class="n">REPL</span><span class="p">:</span><span class="w"> </span><span class="n">handleSubmit</span><span class="p">(</span><span class="n">prompt</span><span class="p">)</span>
-<span class="w">    </span><span class="n">REPL</span><span class="o">-&gt;&gt;</span><span class="n">Query</span><span class="p">:</span><span class="w"> </span><span class="n">query</span><span class="p">(</span><span class="n">messages</span><span class="p">,</span><span class="w"> </span><span class="n">tools</span><span class="p">,</span><span class="w"> </span><span class="n">model</span><span class="p">)</span>
-<span class="w">    </span><span class="n">loop</span><span class="w"> </span><span class="err">流式输出</span>
-<span class="w">        </span><span class="n">Query</span><span class="o">--&gt;&gt;</span><span class="n">REPL</span><span class="p">:</span><span class="w"> </span><span class="nb">yield</span><span class="w"> </span><span class="n">StreamEvent</span>
-<span class="w">        </span><span class="n">REPL</span><span class="o">-&gt;&gt;</span><span class="n">REPL</span><span class="p">:</span><span class="w"> </span><span class="n">handleMessageFromStream</span><span class="p">(</span><span class="n">event</span><span class="p">)</span>\<span class="n">n更新</span><span class="w"> </span><span class="n">messages</span><span class="w"> </span><span class="err">状态</span>
-<span class="w">        </span><span class="n">REPL</span><span class="o">-&gt;&gt;</span><span class="n">Ink</span><span class="p">:</span><span class="w"> </span><span class="n">React</span><span class="w"> </span><span class="err">重渲染触发</span>
-<span class="w">        </span><span class="n">Ink</span><span class="o">-&gt;&gt;</span><span class="n">Ink</span><span class="p">:</span><span class="w"> </span><span class="n">reconciler</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>\<span class="n">n</span><span class="err">→</span><span class="w"> </span><span class="n">Yoga</span><span class="w"> </span><span class="err">布局</span>\<span class="n">n</span><span class="err">→</span><span class="w"> </span><span class="n">diff</span><span class="w"> </span><span class="err">帧缓冲区</span>
-<span class="w">        </span><span class="n">Ink</span><span class="o">-&gt;&gt;</span><span class="n">Term</span><span class="p">:</span><span class="w"> </span><span class="err">输出变化的字符单元格</span>
-<span class="w">    </span><span class="n">end</span>
-<span class="w">    </span><span class="n">Query</span><span class="o">--&gt;&gt;</span><span class="n">REPL</span><span class="p">:</span><span class="w"> </span><span class="nb">yield</span><span class="w"> </span><span class="n">AssistantMessage</span><span class="w"> </span><span class="p">(</span><span class="err">完整</span><span class="p">)</span>
-<span class="w">    </span><span class="n">REPL</span><span class="o">-&gt;&gt;</span><span class="n">REPL</span><span class="p">:</span><span class="w"> </span><span class="err">更新</span><span class="w"> </span><span class="n">cost</span><span class="o">-</span><span class="n">tracker</span>
-</code></pre></div>
+    User->>PromptInput: Enter
+    PromptInput->>REPL: handleSubmit(prompt)
+    REPL->>Query: query(messages, tools, model)
+    loop 流式输出
+        Query-->>REPL: yield StreamEvent
+        REPL->>REPL: handleMessageFromStream(event)\n更新 messages 状态
+        REPL->>Ink: React 重渲染触发
+        Ink->>Ink: reconciler.commit()\n→ Yoga 布局\n→ diff 帧缓冲区
+        Ink->>Term: 输出变化的字符单元格
+    end
+    Query-->>REPL: yield AssistantMessage (完整)
+    REPL->>REPL: 更新 cost-tracker
+</div>
 
 <p>关键性能特征：
 - React <strong>Concurrent Mode</strong> 允许渲染工作被中断，不会因大量消息涌入而卡住输入
@@ -492,7 +494,7 @@ Vim 模式        ← useVimInput（在 PromptInput 中）
 <hr />
 <h2 id="_10">小结</h2>
 <p>Claude Code 终端 UI 的技术栈可以这样总结：</p>
-<div class="codehilite"><pre><span></span><code>React (Concurrent Mode)
+<pre class="codehilite"><code>React (Concurrent Mode)
     ↓ react-reconciler (自定义)
 Ink DOM (ink-box, ink-text, ...)
     ↓ Yoga WASM
@@ -501,7 +503,7 @@ Flexbox 布局
 Screen Buffer (双缓冲)
     ↓ writeDiffToTerminal
 终端 ANSI 字符输出
-</code></pre></div>
+</code></pre>
 
 <p>这套架构让 UI 代码可以像 Web 前端一样用 React 组件和 Hook 来写，同时通过深度定制的渲染管道（双缓冲差量、Yoga 布局、节流帧调度）达到了终端 UI 所需的高性能输出。Vim 模式、用户可定义键位绑定、费用追踪等功能，则展示了这套架构在细节体验上的用心程度。</p>
             </article>

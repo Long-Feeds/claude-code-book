@@ -152,18 +152,18 @@
 <hr />
 <h2 id="51-canusetoolfn">5.1 权限系统的入口：CanUseToolFn</h2>
 <p>整个权限系统对外只暴露一个函数类型（<code>src/hooks/useCanUseTool.tsx:27</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/hooks/useCanUseTool.tsx:27</span>
-<span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">CanUseToolFn</span><span class="o">&lt;</span>
-<span class="w">  </span><span class="nx">Input</span><span class="w"> </span><span class="k">extends</span><span class="w"> </span><span class="nx">Record</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">unknown</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">Record</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">unknown</span><span class="o">&gt;</span>
-<span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span>
-<span class="w">  </span><span class="nx">tool</span><span class="o">:</span><span class="w"> </span><span class="kt">ToolType</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">input</span><span class="o">:</span><span class="w"> </span><span class="kt">Input</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">toolUseContext</span><span class="o">:</span><span class="w"> </span><span class="kt">ToolUseContext</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">assistantMessage</span><span class="o">:</span><span class="w"> </span><span class="kt">AssistantMessage</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">toolUseID</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">forceDecision?</span><span class="o">:</span><span class="w"> </span><span class="kt">PermissionDecision</span><span class="o">&lt;</span><span class="nx">Input</span><span class="o">&gt;</span><span class="p">,</span>
-<span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="nx">PermissionDecision</span><span class="o">&lt;</span><span class="nx">Input</span><span class="o">&gt;&gt;</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// src/hooks/useCanUseTool.tsx:27
+export type CanUseToolFn&lt;
+  Input extends Record&lt;string, unknown&gt; = Record&lt;string, unknown&gt;
+&gt; = (
+  tool: ToolType,
+  input: Input,
+  toolUseContext: ToolUseContext,
+  assistantMessage: AssistantMessage,
+  toolUseID: string,
+  forceDecision?: PermissionDecision&lt;Input&gt;,
+) =&gt; Promise&lt;PermissionDecision&lt;Input&gt;&gt;
+</code></pre>
 
 <p><code>CanUseToolFn</code> 是权限系统的统一接口。无论是交互式 REPL、SDK 无头模式，还是多智能体协调器，都通过这个接口请求权限。<code>QueryEngine</code> 在初始化时会用 <code>wrappedCanUseTool</code> 包装它，额外追踪每次拒绝事件（<code>src/QueryEngine.ts:244</code>）。</p>
 <hr />
@@ -199,61 +199,62 @@
 <hr />
 <h2 id="53-usecanusetool-hook-react">5.3 useCanUseTool Hook：连接 React 与权限逻辑</h2>
 <p><code>useCanUseTool</code> 是一个 React Hook（<code>src/hooks/useCanUseTool.tsx:28</code>），在交互式 REPL 模式下使用。它返回一个 <code>CanUseToolFn</code> 函数，该函数执行以下流程：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/hooks/useCanUseTool.tsx:32</span>
-<span class="nx">t0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="p">(</span><span class="nx">tool</span><span class="p">,</span><span class="w"> </span><span class="nx">input</span><span class="p">,</span><span class="w"> </span><span class="nx">toolUseContext</span><span class="p">,</span><span class="w"> </span><span class="nx">assistantMessage</span><span class="p">,</span><span class="w"> </span><span class="nx">toolUseID</span><span class="p">,</span><span class="w"> </span><span class="nx">forceDecision</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span>
-<span class="w">  </span><span class="ow">new</span><span class="w"> </span><span class="nb">Promise</span><span class="p">(</span><span class="nx">resolve</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">ctx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">createPermissionContext</span><span class="p">(...)</span>
+<pre class="codehilite"><code class="language-typescript">// src/hooks/useCanUseTool.tsx:32
+t0 = async (tool, input, toolUseContext, assistantMessage, toolUseID, forceDecision) =&gt;
+  new Promise(resolve =&gt; {
+    const ctx = createPermissionContext(...)
 
-<span class="w">    </span><span class="c1">// 1. 若已中断，立即拒绝</span>
-<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">ctx</span><span class="p">.</span><span class="nx">resolveIfAborted</span><span class="p">(</span><span class="nx">resolve</span><span class="p">))</span><span class="w"> </span><span class="k">return</span>
+    // 1. 若已中断，立即拒绝
+    if (ctx.resolveIfAborted(resolve)) return
 
-<span class="w">    </span><span class="c1">// 2. 若有强制决策（forceDecision），直接使用</span>
-<span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">decisionPromise</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">forceDecision</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="kc">undefined</span>
-<span class="w">      </span><span class="o">?</span><span class="w"> </span><span class="nb">Promise</span><span class="p">.</span><span class="nx">resolve</span><span class="p">(</span><span class="nx">forceDecision</span><span class="p">)</span>
-<span class="w">      </span><span class="o">:</span><span class="w"> </span><span class="nx">hasPermissionsToUseTool</span><span class="p">(</span><span class="nx">tool</span><span class="p">,</span><span class="w"> </span><span class="nx">input</span><span class="p">,</span><span class="w"> </span><span class="nx">toolUseContext</span><span class="p">,</span><span class="w"> </span><span class="nx">assistantMessage</span><span class="p">,</span><span class="w"> </span><span class="nx">toolUseID</span><span class="p">)</span>
+    // 2. 若有强制决策（forceDecision），直接使用
+    const decisionPromise = forceDecision !== undefined
+      ? Promise.resolve(forceDecision)
+      : hasPermissionsToUseTool(tool, input, toolUseContext, assistantMessage, toolUseID)
 
-<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">decisionPromise</span><span class="p">.</span><span class="nx">then</span><span class="p">(</span><span class="k">async</span><span class="w"> </span><span class="nx">result</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">result</span><span class="p">.</span><span class="nx">behavior</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;allow&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="c1">// 直接允许，记录日志</span>
-<span class="w">        </span><span class="nx">resolve</span><span class="p">(</span><span class="nx">ctx</span><span class="p">.</span><span class="nx">buildAllow</span><span class="p">(</span><span class="nx">result</span><span class="p">.</span><span class="nx">updatedInput</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="nx">input</span><span class="p">,</span><span class="w"> </span><span class="p">...))</span>
-<span class="w">        </span><span class="k">return</span>
-<span class="w">      </span><span class="p">}</span>
-<span class="w">      </span><span class="c1">// 获取工具描述（用于展示给用户）</span>
-<span class="w">      </span><span class="kd">const</span><span class="w"> </span><span class="nx">description</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">tool</span><span class="p">.</span><span class="nx">description</span><span class="p">(</span><span class="nx">input</span><span class="p">,</span><span class="w"> </span><span class="p">...)</span>
+    return decisionPromise.then(async result =&gt; {
+      if (result.behavior === 'allow') {
+        // 直接允许，记录日志
+        resolve(ctx.buildAllow(result.updatedInput ?? input, ...))
+        return
+      }
+      // 获取工具描述（用于展示给用户）
+      const description = await tool.description(input, ...)
 
-<span class="w">      </span><span class="k">switch</span><span class="w"> </span><span class="p">(</span><span class="nx">result</span><span class="p">.</span><span class="nx">behavior</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="s1">&#39;deny&#39;</span><span class="o">:</span>
-<span class="w">          </span><span class="c1">// 直接拒绝，记录日志</span>
-<span class="w">          </span><span class="nx">resolve</span><span class="p">(</span><span class="nx">result</span><span class="p">);</span><span class="w"> </span><span class="k">return</span>
-<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="s1">&#39;ask&#39;</span><span class="o">:</span>
-<span class="w">          </span><span class="c1">// 进入多处理器竞速流程</span>
-<span class="w">          </span><span class="p">...</span>
-<span class="w">      </span><span class="p">}</span>
-<span class="w">    </span><span class="p">})</span>
-<span class="w">  </span><span class="p">})</span>
-</code></pre></div>
+      switch (result.behavior) {
+        case 'deny':
+          // 直接拒绝，记录日志
+          resolve(result); return
+        case 'ask':
+          // 进入多处理器竞速流程
+          ...
+      }
+    })
+  })
+</code></pre>
 
 <hr />
 <h2 id="54-haspermissionstousetool">5.4 hasPermissionsToUseTool：核心决策树</h2>
 <p><code>hasPermissionsToUseTool</code>（<code>src/utils/permissions/permissions.ts:473</code>）是权限决策的实质逻辑所在。它内部调用 <code>hasPermissionsToUseToolInner</code>（第 1158 行），执行一棵严格有序的决策树：</p>
-<div class="codehilite"><pre><span></span><code><span class="n">flowchart</span><span class="w"> </span><span class="n">TD</span>
-<span class="w">    </span><span class="n">A</span><span class="p">[</span><span class="n">hasPermissionsToUseToolInner</span><span class="w"> </span><span class="n">入口</span><span class="p">]</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">B</span><span class="p">{</span><span class="mi">1</span><span class="n">a</span><span class="p">.</span><span class="w"> </span><span class="n">denyRule</span><span class="w"> </span><span class="n">命中</span><span class="o">?</span><span class="p">}</span>
-<span class="w">    </span><span class="n">B</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">是</span><span class="o">|</span><span class="w"> </span><span class="n">DENY1</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">deny</span><span class="p">]</span>
-<span class="w">    </span><span class="n">B</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">否</span><span class="o">|</span><span class="w"> </span><span class="n">C</span><span class="p">{</span><span class="mi">1</span><span class="n">b</span><span class="p">.</span><span class="w"> </span><span class="n">askRule</span><span class="w"> </span><span class="n">命中</span><span class="o">?</span><span class="p">}</span>
-<span class="w">    </span><span class="n">C</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">是</span><span class="err">，</span><span class="n">且不可沙箱自动放行</span><span class="o">|</span><span class="w"> </span><span class="n">ASK1</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">ask</span><span class="p">]</span>
-<span class="w">    </span><span class="n">C</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">否</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">沙箱放行</span><span class="o">|</span><span class="w"> </span><span class="n">D</span><span class="p">[</span><span class="mi">1</span><span class="n">c</span><span class="p">.</span><span class="w"> </span><span class="n">调用</span><span class="w"> </span><span class="n">tool</span><span class="p">.</span><span class="n">checkPermissions</span><span class="p">]</span>
-<span class="w">    </span><span class="n">D</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">E</span><span class="p">{</span><span class="n">结果</span><span class="o">?</span><span class="p">}</span>
-<span class="w">    </span><span class="n">E</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">deny</span><span class="o">|</span><span class="w"> </span><span class="n">DENY2</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">deny</span><span class="p">]</span>
-<span class="w">    </span><span class="n">E</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">ask</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">requiresUserInteraction</span><span class="o">|</span><span class="w"> </span><span class="n">ASK2</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">ask</span><span class="p">]</span>
-<span class="w">    </span><span class="n">E</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">ask</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">规则来源</span><span class="w"> </span><span class="n">ask</span><span class="o">|</span><span class="w"> </span><span class="n">ASK3</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">ask</span><span class="p">]</span>
-<span class="w">    </span><span class="n">E</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">ask</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">safetyCheck</span><span class="o">|</span><span class="w"> </span><span class="n">ASK4</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">ask</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">bypass免疫</span><span class="p">]</span>
-<span class="w">    </span><span class="n">E</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">passthrough</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">allow</span><span class="o">|</span><span class="w"> </span><span class="n">F</span><span class="p">{</span><span class="mi">2</span><span class="n">a</span><span class="p">.</span><span class="w"> </span><span class="n">bypassPermissions</span><span class="w"> </span><span class="n">模式</span><span class="o">?</span><span class="p">}</span>
-<span class="w">    </span><span class="n">F</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">是</span><span class="o">|</span><span class="w"> </span><span class="n">ALLOW1</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">allow</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">mode</span><span class="o">:</span><span class="w"> </span><span class="n">bypass</span><span class="p">]</span>
-<span class="w">    </span><span class="n">F</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">否</span><span class="o">|</span><span class="w"> </span><span class="n">G</span><span class="p">{</span><span class="mi">2</span><span class="n">b</span><span class="p">.</span><span class="w"> </span><span class="n">alwaysAllowRule</span><span class="w"> </span><span class="n">命中</span><span class="o">?</span><span class="p">}</span>
-<span class="w">    </span><span class="n">G</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">是</span><span class="o">|</span><span class="w"> </span><span class="n">ALLOW2</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">allow</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">rule</span><span class="p">]</span>
-<span class="w">    </span><span class="n">G</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">否</span><span class="o">|</span><span class="w"> </span><span class="n">H</span><span class="p">[</span><span class="mf">3.</span><span class="w"> </span><span class="n">passthrough</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">ask</span><span class="p">]</span>
-<span class="w">    </span><span class="n">H</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">I</span><span class="p">[</span><span class="n">返回</span><span class="w"> </span><span class="n">ask</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">decisionReason</span><span class="p">]</span>
-</code></pre></div>
+<div class="mermaid">
+flowchart TD
+    A[hasPermissionsToUseToolInner 入口] --> B{1a. denyRule 命中?}
+    B -->|是| DENY1[return deny]
+    B -->|否| C{1b. askRule 命中?}
+    C -->|是，且不可沙箱自动放行| ASK1[return ask]
+    C -->|否 / 沙箱放行| D[1c. 调用 tool.checkPermissions]
+    D --> E{结果?}
+    E -->|deny| DENY2[return deny]
+    E -->|ask + requiresUserInteraction| ASK2[return ask]
+    E -->|ask + 规则来源 ask| ASK3[return ask]
+    E -->|ask + safetyCheck| ASK4[return ask - bypass免疫]
+    E -->|passthrough / allow| F{2a. bypassPermissions 模式?}
+    F -->|是| ALLOW1[return allow - mode: bypass]
+    F -->|否| G{2b. alwaysAllowRule 命中?}
+    G -->|是| ALLOW2[return allow - rule]
+    G -->|否| H[3. passthrough → ask]
+    H --> I[返回 ask + decisionReason]
+</div>
 
 <p>这棵决策树的关键设计是<strong>优先级严格有序</strong>：
 - 拒绝规则（deny rules）永远最先检查
@@ -264,17 +265,17 @@
 <hr />
 <h2 id="55">5.5 权限模式：六种运行姿态</h2>
 <p>权限模式（<code>PermissionMode</code>）定义在 <code>src/utils/permissions/PermissionMode.ts</code>，控制整体的权限松紧程度：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/utils/permissions/PermissionMode.ts:44</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">PERMISSION_MODE_CONFIG</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="k">default</span><span class="o">:</span><span class="w">            </span><span class="p">{</span><span class="w"> </span><span class="nx">title</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Default&#39;</span><span class="p">,</span><span class="w">            </span><span class="nx">color</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;text&#39;</span><span class="w">      </span><span class="p">},</span>
-<span class="w">  </span><span class="nx">plan</span><span class="o">:</span><span class="w">               </span><span class="p">{</span><span class="w"> </span><span class="nx">title</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Plan Mode&#39;</span><span class="p">,</span><span class="w">           </span><span class="nx">color</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;planMode&#39;</span><span class="w">  </span><span class="p">},</span>
-<span class="w">  </span><span class="nx">acceptEdits</span><span class="o">:</span><span class="w">        </span><span class="p">{</span><span class="w"> </span><span class="nx">title</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Accept edits&#39;</span><span class="p">,</span><span class="w">        </span><span class="nx">color</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;autoAccept&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">symbol</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;⏵⏵&#39;</span><span class="w"> </span><span class="p">},</span>
-<span class="w">  </span><span class="nx">bypassPermissions</span><span class="o">:</span><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">title</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Bypass Permissions&#39;</span><span class="p">,</span><span class="w">  </span><span class="nx">color</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;error&#39;</span><span class="p">,</span><span class="w">      </span><span class="nx">symbol</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;⏵⏵&#39;</span><span class="w"> </span><span class="p">},</span>
-<span class="w">  </span><span class="nx">dontAsk</span><span class="o">:</span><span class="w">            </span><span class="p">{</span><span class="w"> </span><span class="nx">title</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;Don&#39;t Ask&quot;</span><span class="p">,</span><span class="w">           </span><span class="nx">color</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;error&#39;</span><span class="p">,</span><span class="w">      </span><span class="nx">symbol</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;⏵⏵&#39;</span><span class="w"> </span><span class="p">},</span>
-<span class="w">  </span><span class="c1">// (TRANSCRIPT_CLASSIFIER feature flag)</span>
-<span class="w">  </span><span class="nx">auto</span><span class="o">:</span><span class="w">               </span><span class="p">{</span><span class="w"> </span><span class="nx">title</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Auto mode&#39;</span><span class="p">,</span><span class="w">           </span><span class="nx">color</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;warning&#39;</span><span class="p">,</span><span class="w">    </span><span class="nx">symbol</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;⏵⏵&#39;</span><span class="w"> </span><span class="p">},</span>
-<span class="p">}</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// src/utils/permissions/PermissionMode.ts:44
+const PERMISSION_MODE_CONFIG = {
+  default:            { title: 'Default',            color: 'text'      },
+  plan:               { title: 'Plan Mode',           color: 'planMode'  },
+  acceptEdits:        { title: 'Accept edits',        color: 'autoAccept', symbol: '⏵⏵' },
+  bypassPermissions:  { title: 'Bypass Permissions',  color: 'error',      symbol: '⏵⏵' },
+  dontAsk:            { title: &quot;Don't Ask&quot;,           color: 'error',      symbol: '⏵⏵' },
+  // (TRANSCRIPT_CLASSIFIER feature flag)
+  auto:               { title: 'Auto mode',           color: 'warning',    symbol: '⏵⏵' },
+}
+</code></pre>
 
 <p>各模式的实际效果（在 <code>hasPermissionsToUseTool</code> 中体现）：</p>
 <table>
@@ -319,29 +320,29 @@
 </tbody>
 </table>
 <p><code>dontAsk</code> 模式的处理逻辑位于 <code>hasPermissionsToUseTool</code> 的后处理阶段（第 505–516 行）：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/utils/permissions/permissions.ts:505</span>
-<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">result</span><span class="p">.</span><span class="nx">behavior</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;ask&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">appState</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">getAppState</span><span class="p">()</span>
-<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">appState</span><span class="p">.</span><span class="nx">toolPermissionContext</span><span class="p">.</span><span class="nx">mode</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;dontAsk&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="nx">behavior</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;deny&#39;</span><span class="p">,</span>
-<span class="w">      </span><span class="nx">decisionReason</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="kr">type</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;mode&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">mode</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;dontAsk&#39;</span><span class="w"> </span><span class="p">},</span>
-<span class="w">      </span><span class="nx">message</span><span class="o">:</span><span class="w"> </span><span class="kt">DONT_ASK_REJECT_MESSAGE</span><span class="p">(</span><span class="nx">tool</span><span class="p">.</span><span class="nx">name</span><span class="p">),</span>
-<span class="w">    </span><span class="p">}</span>
-<span class="w">  </span><span class="p">}</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// src/utils/permissions/permissions.ts:505
+if (result.behavior === 'ask') {
+  const appState = context.getAppState()
+  if (appState.toolPermissionContext.mode === 'dontAsk') {
+    return {
+      behavior: 'deny',
+      decisionReason: { type: 'mode', mode: 'dontAsk' },
+      message: DONT_ASK_REJECT_MESSAGE(tool.name),
+    }
+  }
+</code></pre>
 
 <hr />
 <h2 id="56">5.6 权限规则的存储与匹配</h2>
 <p>权限规则分为三类：<code>alwaysAllowRules</code>、<code>alwaysDenyRules</code>、<code>alwaysAskRules</code>，每类规则都按<strong>来源</strong>分层存储（<code>src/utils/permissions/permissions.ts:109</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/utils/permissions/permissions.ts:109</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">PERMISSION_RULE_SOURCES</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
-<span class="w">  </span><span class="p">...</span><span class="nx">SETTING_SOURCES</span><span class="p">,</span><span class="w">  </span><span class="c1">// 全局/项目/本地 settings.json</span>
-<span class="w">  </span><span class="s1">&#39;cliArg&#39;</span><span class="p">,</span><span class="w">            </span><span class="c1">// --allowedTools CLI 参数</span>
-<span class="w">  </span><span class="s1">&#39;command&#39;</span><span class="p">,</span><span class="w">           </span><span class="c1">// /allow 等斜杠命令</span>
-<span class="w">  </span><span class="s1">&#39;session&#39;</span><span class="p">,</span><span class="w">           </span><span class="c1">// 当前会话临时允许</span>
-<span class="p">]</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// src/utils/permissions/permissions.ts:109
+const PERMISSION_RULE_SOURCES = [
+  ...SETTING_SOURCES,  // 全局/项目/本地 settings.json
+  'cliArg',            // --allowedTools CLI 参数
+  'command',           // /allow 等斜杠命令
+  'session',           // 当前会话临时允许
+]
+</code></pre>
 
 <p>规则格式为 <code>工具名(内容)</code> 字符串，例如：
 - <code>Bash</code> — 允许/拒绝整个 Bash 工具
@@ -360,20 +361,21 @@
 2. 若 hooks 未决策，且 <code>shouldAvoidPermissionPrompts</code> 为真，则自动拒绝</p>
 <h3 id="573">5.7.3 交互式处理器</h3>
 <p><code>handleInteractivePermission</code>（<code>src/hooks/toolPermission/handlers/interactiveHandler.ts:57</code>）是最复杂的处理器，用于标准交互式 REPL 模式。它同时发起多路竞速：</p>
-<div class="codehilite"><pre><span></span><code><span class="n">flowchart</span><span class="w"> </span><span class="n">LR</span>
-<span class="w">    </span><span class="n">ASK</span><span class="p">[</span><span class="n">ask</span><span class="w"> </span><span class="err">决策</span><span class="p">]</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">Q</span><span class="p">[</span><span class="err">推入</span><span class="w"> </span><span class="n">ToolUseConfirm</span><span class="w"> </span><span class="err">队列</span><span class="p">]</span>
-<span class="w">    </span><span class="n">Q</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">P1</span><span class="p">[</span><span class="err">本地</span><span class="w"> </span><span class="n">CLI</span><span class="w"> </span><span class="err">对话框</span><span class="p">]</span>
-<span class="w">    </span><span class="n">Q</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">P2</span><span class="p">[</span><span class="n">Bridge</span><span class="w"> </span><span class="err">远程响应</span><span class="w"> </span><span class="n">claude</span><span class="p">.</span><span class="n">ai</span><span class="p">]</span>
-<span class="w">    </span><span class="n">Q</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">P3</span><span class="p">[</span><span class="n">Channel</span><span class="w"> </span><span class="err">响应</span><span class="w"> </span><span class="n">Telegram</span><span class="o">/</span><span class="n">iMessage</span><span class="p">]</span>
-<span class="w">    </span><span class="n">Q</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">P4</span><span class="p">[</span><span class="n">PermissionRequest</span><span class="w"> </span><span class="n">hooks</span><span class="w"> </span><span class="err">异步</span><span class="p">]</span>
-<span class="w">    </span><span class="n">Q</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">P5</span><span class="p">[</span><span class="n">BASH_CLASSIFIER</span><span class="w"> </span><span class="err">异步分类器</span><span class="p">]</span>
-<span class="w">    </span><span class="n">P1</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">P2</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">P3</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">P4</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">P5</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">claim</span><span class="w"> </span><span class="err">竞速</span><span class="o">|</span><span class="w"> </span><span class="n">RESOLVE</span><span class="p">[</span><span class="n">resolveOnce</span><span class="w"> </span><span class="err">决定结果</span><span class="p">]</span>
-</code></pre></div>
+<div class="mermaid">
+flowchart LR
+    ASK[ask 决策] --> Q[推入 ToolUseConfirm 队列]
+    Q --> P1[本地 CLI 对话框]
+    Q --> P2[Bridge 远程响应 claude.ai]
+    Q --> P3[Channel 响应 Telegram/iMessage]
+    Q --> P4[PermissionRequest hooks 异步]
+    Q --> P5[BASH_CLASSIFIER 异步分类器]
+    P1 & P2 & P3 & P4 & P5 -->|claim 竞速| RESOLVE[resolveOnce 决定结果]
+</div>
 
 <p><code>resolveOnce</code> 通过 <code>createResolveOnce</code> 工厂函数（<code>src/hooks/toolPermission/PermissionContext.ts</code>）创建，保证多路竞速中只有第一个赢家的结果被采用：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/hooks/toolPermission/handlers/interactiveHandler.ts:70</span>
-<span class="kd">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">resolve</span><span class="o">:</span><span class="w"> </span><span class="kt">resolveOnce</span><span class="p">,</span><span class="w"> </span><span class="nx">isResolved</span><span class="p">,</span><span class="w"> </span><span class="nx">claim</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">createResolveOnce</span><span class="p">(</span><span class="nx">resolve</span><span class="p">)</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// src/hooks/toolPermission/handlers/interactiveHandler.ts:70
+const { resolve: resolveOnce, isResolved, claim } = createResolveOnce(resolve)
+</code></pre>
 
 <p>五路竞速的优先顺序由 <code>claim()</code> 原子操作保证——最先调用 <code>claim()</code> 的路径获胜，其余路径调用 <code>if (!claim()) return</code> 后静默退出。</p>
 <hr />
@@ -381,24 +383,24 @@
 <p>当 <code>BASH_CLASSIFIER</code> feature flag 开启时，系统会在权限对话框展示之前，<strong>并发地</strong>启动一个 AI 分类器检查 Bash 命令是否匹配已有的允许规则。这个机制分为两种触发路径：</p>
 <p><strong>路径一：预先推测（<code>peekSpeculativeClassifierCheck</code>）</strong></p>
 <p>在 <code>useCanUseTool</code> 的 <code>ask</code> 分支中（<code>src/hooks/useCanUseTool.tsx:126-158</code>），如果 <code>!awaitAutomatedChecksBeforeDialog</code>（非协调器模式），会先 race 一个已存在的推测性 Promise：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/hooks/useCanUseTool.tsx:127</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">speculativePromise</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">peekSpeculativeClassifierCheck</span><span class="p">(</span>
-<span class="w">  </span><span class="p">(</span><span class="nx">input</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">command</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="p">}).</span><span class="nx">command</span>
-<span class="p">)</span>
-<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">speculativePromise</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">raceResult</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nb">Promise</span><span class="p">.</span><span class="nx">race</span><span class="p">([</span>
-<span class="w">    </span><span class="nx">speculativePromise</span><span class="p">.</span><span class="nx">then</span><span class="p">(</span><span class="nx">_temp</span><span class="p">),</span>
-<span class="w">    </span><span class="ow">new</span><span class="w"> </span><span class="nb">Promise</span><span class="p">(</span><span class="nx">_temp2</span><span class="p">),</span><span class="w">  </span><span class="c1">// 2秒超时</span>
-<span class="w">  </span><span class="p">])</span>
-<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">raceResult</span><span class="p">.</span><span class="kr">type</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;result&#39;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">raceResult</span><span class="p">.</span><span class="nx">result</span><span class="p">.</span><span class="nx">matches</span><span class="w"> </span><span class="o">&amp;&amp;</span>
-<span class="w">      </span><span class="nx">raceResult</span><span class="p">.</span><span class="nx">result</span><span class="p">.</span><span class="nx">confidence</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;high&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="c1">// 分类器高置信度匹配，直接允许</span>
-<span class="w">    </span><span class="nx">consumeSpeculativeClassifierCheck</span><span class="p">(...)</span>
-<span class="w">    </span><span class="nx">resolve</span><span class="p">(</span><span class="nx">ctx</span><span class="p">.</span><span class="nx">buildAllow</span><span class="p">(...))</span>
-<span class="w">    </span><span class="k">return</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="p">}</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// src/hooks/useCanUseTool.tsx:127
+const speculativePromise = peekSpeculativeClassifierCheck(
+  (input as { command: string }).command
+)
+if (speculativePromise) {
+  const raceResult = await Promise.race([
+    speculativePromise.then(_temp),
+    new Promise(_temp2),  // 2秒超时
+  ])
+  if (raceResult.type === 'result' &amp;&amp; raceResult.result.matches &amp;&amp;
+      raceResult.result.confidence === 'high') {
+    // 分类器高置信度匹配，直接允许
+    consumeSpeculativeClassifierCheck(...)
+    resolve(ctx.buildAllow(...))
+    return
+  }
+}
+</code></pre>
 
 <p><strong>路径二：异步并发（<code>executeAsyncClassifierCheck</code>）</strong></p>
 <p>在交互式处理器中（第 433–530 行），分类器与用户对话框并行运行。如果分类器在用户点击之前完成检查并批准，UI 会短暂显示一个绿色勾（<code>classifierAutoApproved: true</code>），然后自动关闭对话框——用户可能甚至来不及看到就已经被自动批准了。</p>
@@ -406,19 +408,19 @@
 <h2 id="59-auto-yolo">5.9 Auto 模式：YOLO 分类器</h2>
 <p><code>auto</code> 模式（内部专用，<code>TRANSCRIPT_CLASSIFIER</code> feature flag）使用 <code>classifyYoloAction</code>（<code>src/utils/permissions/yoloClassifier.ts</code>）对工具调用进行 AI 分类。在进入分类器之前，有两条快速通道可以跳过昂贵的 API 调用：</p>
 <p><strong>快速通道一：acceptEdits 模拟</strong>（第 601–656 行）</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/utils/permissions/permissions.ts:606</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">acceptEditsResult</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">tool</span><span class="p">.</span><span class="nx">checkPermissions</span><span class="p">(</span><span class="nx">parsedInput</span><span class="p">,</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="p">...</span><span class="nx">context</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">getAppState</span><span class="o">:</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">({</span>
-<span class="w">    </span><span class="p">...</span><span class="nx">state</span><span class="p">,</span>
-<span class="w">    </span><span class="nx">toolPermissionContext</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">...</span><span class="nx">state</span><span class="p">.</span><span class="nx">toolPermissionContext</span><span class="p">,</span><span class="w"> </span><span class="nx">mode</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;acceptEdits&#39;</span><span class="w"> </span><span class="p">}</span>
-<span class="w">  </span><span class="p">}),</span>
-<span class="p">})</span>
-<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">acceptEditsResult</span><span class="p">.</span><span class="nx">behavior</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;allow&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="c1">// 该工具在 acceptEdits 模式下会被允许，跳过分类器</span>
-<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">behavior</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;allow&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">decisionReason</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="kr">type</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;mode&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">mode</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;auto&#39;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
-<span class="p">}</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// src/utils/permissions/permissions.ts:606
+const acceptEditsResult = await tool.checkPermissions(parsedInput, {
+  ...context,
+  getAppState: () =&gt; ({
+    ...state,
+    toolPermissionContext: { ...state.toolPermissionContext, mode: 'acceptEdits' }
+  }),
+})
+if (acceptEditsResult.behavior === 'allow') {
+  // 该工具在 acceptEdits 模式下会被允许，跳过分类器
+  return { behavior: 'allow', decisionReason: { type: 'mode', mode: 'auto' } }
+}
+</code></pre>
 
 <p><strong>快速通道二：安全工具白名单</strong>（第 660–686 行）</p>
 <p>部分工具（如 Read、LS 等只读工具）被预置在 <code>isAutoModeAllowlistedTool</code> 中，直接跳过分类器。</p>
@@ -436,51 +438,52 @@
 <p>同时通过 <code>setAppState</code> 更新运行时 <code>toolPermissionContext.alwaysAllowRules</code>，使规则立即生效而无需重启。</p>
 <hr />
 <h2 id="511">5.11 完整权限决策流程图</h2>
-<div class="codehilite"><pre><span></span><code><span class="n">flowchart</span><span class="w"> </span><span class="n">TD</span>
-<span class="w">    </span><span class="n">START</span><span class="p">([</span><span class="n">工具调用请求</span><span class="p">])</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">HC</span><span class="p">[</span><span class="n">hasPermissionsToUseTool</span><span class="p">]</span>
-<span class="w">    </span><span class="n">HC</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">INNER</span><span class="p">[</span><span class="n">hasPermissionsToUseToolInner</span><span class="p">]</span>
+<div class="mermaid">
+flowchart TD
+    START([工具调用请求]) --> HC[hasPermissionsToUseTool]
+    HC --> INNER[hasPermissionsToUseToolInner]
 
-<span class="w">    </span><span class="n">INNER</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">D1</span><span class="p">{</span><span class="n">deny</span><span class="w"> </span><span class="n">rule</span><span class="o">?</span><span class="p">}</span>
-<span class="w">    </span><span class="n">D1</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">是</span><span class="o">|</span><span class="w"> </span><span class="n">RD1</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">deny</span><span class="p">]</span>
-<span class="w">    </span><span class="n">D1</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">否</span><span class="o">|</span><span class="w"> </span><span class="n">D2</span><span class="p">{</span><span class="n">ask</span><span class="w"> </span><span class="n">rule</span><span class="o">?</span><span class="p">}</span>
-<span class="w">    </span><span class="n">D2</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">是</span><span class="o">|</span><span class="w"> </span><span class="n">RD2</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">ask</span><span class="p">]</span>
-<span class="w">    </span><span class="n">D2</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">否</span><span class="o">|</span><span class="w"> </span><span class="n">D3</span><span class="p">[</span><span class="n">tool</span><span class="p">.</span><span class="n">checkPermissions</span><span class="p">]</span>
-<span class="w">    </span><span class="n">D3</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">D4</span><span class="p">{</span><span class="n">结果</span><span class="o">?</span><span class="p">}</span>
-<span class="w">    </span><span class="n">D4</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">deny</span><span class="o">|</span><span class="w"> </span><span class="n">RD4</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">deny</span><span class="p">]</span>
-<span class="w">    </span><span class="n">D4</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">ask</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">safetyCheck</span><span class="o">|</span><span class="w"> </span><span class="n">RD5</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">ask</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">bypass免疫</span><span class="p">]</span>
-<span class="w">    </span><span class="n">D4</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">passthrough</span><span class="o">/</span><span class="n">ask</span><span class="o">|</span><span class="w"> </span><span class="n">D5</span><span class="p">{</span><span class="n">bypassPermissions</span><span class="o">?</span><span class="p">}</span>
-<span class="w">    </span><span class="n">D5</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">是</span><span class="o">|</span><span class="w"> </span><span class="n">RA1</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">allow</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">bypass</span><span class="p">]</span>
-<span class="w">    </span><span class="n">D5</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">否</span><span class="o">|</span><span class="w"> </span><span class="n">D6</span><span class="p">{</span><span class="n">alwaysAllowRule</span><span class="o">?</span><span class="p">}</span>
-<span class="w">    </span><span class="n">D6</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">是</span><span class="o">|</span><span class="w"> </span><span class="n">RA2</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">allow</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">rule</span><span class="p">]</span>
-<span class="w">    </span><span class="n">D6</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">否</span><span class="o">|</span><span class="w"> </span><span class="n">RD6</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">ask</span><span class="p">]</span>
+    INNER --> D1{deny rule?}
+    D1 -->|是| RD1[return deny]
+    D1 -->|否| D2{ask rule?}
+    D2 -->|是| RD2[return ask]
+    D2 -->|否| D3[tool.checkPermissions]
+    D3 --> D4{结果?}
+    D4 -->|deny| RD4[return deny]
+    D4 -->|ask + safetyCheck| RD5[return ask - bypass免疫]
+    D4 -->|passthrough/ask| D5{bypassPermissions?}
+    D5 -->|是| RA1[return allow - bypass]
+    D5 -->|否| D6{alwaysAllowRule?}
+    D6 -->|是| RA2[return allow - rule]
+    D6 -->|否| RD6[return ask]
 
-<span class="w">    </span><span class="n">HC</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">POST</span><span class="p">{</span><span class="n">后处理</span><span class="p">}</span>
-<span class="w">    </span><span class="n">POST</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">allow</span><span class="o">|</span><span class="w"> </span><span class="n">COUNT</span><span class="p">[</span><span class="n">重置连续拒绝计数</span><span class="p">]</span>
-<span class="w">    </span><span class="n">POST</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">ask</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">dontAsk模式</span><span class="o">|</span><span class="w"> </span><span class="n">DENY2</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">deny</span><span class="p">]</span>
-<span class="w">    </span><span class="n">POST</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">ask</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">auto模式</span><span class="o">|</span><span class="w"> </span><span class="n">YOLO</span><span class="p">[</span><span class="n">classifyYoloAction</span><span class="p">]</span>
+    HC --> POST{后处理}
+    POST -->|allow| COUNT[重置连续拒绝计数]
+    POST -->|ask + dontAsk模式| DENY2[return deny]
+    POST -->|ask + auto模式| YOLO[classifyYoloAction]
 
-<span class="w">    </span><span class="n">YOLO</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">YR</span><span class="p">{</span><span class="n">分类结果</span><span class="p">}</span>
-<span class="w">    </span><span class="n">YR</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">白名单工具</span><span class="o">|</span><span class="w"> </span><span class="n">RA3</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">allow</span><span class="p">]</span>
-<span class="w">    </span><span class="n">YR</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">acceptEdits快速通道</span><span class="o">|</span><span class="w"> </span><span class="n">RA4</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">allow</span><span class="p">]</span>
-<span class="w">    </span><span class="n">YR</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">分类器允许</span><span class="o">|</span><span class="w"> </span><span class="n">RA5</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">allow</span><span class="p">]</span>
-<span class="w">    </span><span class="n">YR</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">分类器拒绝</span><span class="o">|</span><span class="w"> </span><span class="n">RD7</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">deny</span><span class="p">]</span>
-<span class="w">    </span><span class="n">YR</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">分类器不可用</span><span class="o">|</span><span class="w"> </span><span class="n">GATE</span><span class="p">{</span><span class="n">iron_gate</span><span class="o">?</span><span class="p">}</span>
-<span class="w">    </span><span class="n">GATE</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">closed</span><span class="o">|</span><span class="w"> </span><span class="n">RD8</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">deny</span><span class="p">]</span>
-<span class="w">    </span><span class="n">GATE</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">open</span><span class="o">|</span><span class="w"> </span><span class="n">FALLBACK</span><span class="p">[</span><span class="n">降级为</span><span class="w"> </span><span class="n">ask</span><span class="p">]</span>
+    YOLO --> YR{分类结果}
+    YR -->|白名单工具| RA3[return allow]
+    YR -->|acceptEdits快速通道| RA4[return allow]
+    YR -->|分类器允许| RA5[return allow]
+    YR -->|分类器拒绝| RD7[return deny]
+    YR -->|分类器不可用| GATE{iron_gate?}
+    GATE -->|closed| RD8[return deny]
+    GATE -->|open| FALLBACK[降级为 ask]
 
-<span class="w">    </span><span class="n">POST</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">ask</span><span class="w"> </span><span class="n">其他</span><span class="o">|</span><span class="w"> </span><span class="n">HANDLER</span><span class="p">{</span><span class="n">选择处理器</span><span class="p">}</span>
-<span class="w">    </span><span class="n">HANDLER</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">awaitAutomated</span><span class="o">|</span><span class="w"> </span><span class="n">COORD</span><span class="p">[</span><span class="n">coordinatorHandler</span><span class="p">]</span>
-<span class="w">    </span><span class="n">HANDLER</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">shouldAvoidPrompts</span><span class="o">|</span><span class="w"> </span><span class="n">SWARM</span><span class="p">[</span><span class="n">swarmWorkerHandler</span><span class="p">]</span>
-<span class="w">    </span><span class="n">HANDLER</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">交互式</span><span class="o">|</span><span class="w"> </span><span class="n">INTER</span><span class="p">[</span><span class="n">interactiveHandler</span><span class="p">]</span>
+    POST -->|ask 其他| HANDLER{选择处理器}
+    HANDLER -->|awaitAutomated| COORD[coordinatorHandler]
+    HANDLER -->|shouldAvoidPrompts| SWARM[swarmWorkerHandler]
+    HANDLER -->|交互式| INTER[interactiveHandler]
 
-<span class="w">    </span><span class="n">INTER</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">RACE</span><span class="p">[</span><span class="n">多路竞速</span><span class="p">]</span>
-<span class="w">    </span><span class="n">RACE</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">L1</span><span class="p">[</span><span class="n">本地</span><span class="w"> </span><span class="n">CLI</span><span class="w"> </span><span class="n">对话框</span><span class="p">]</span>
-<span class="w">    </span><span class="n">RACE</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">L2</span><span class="p">[</span><span class="n">Bridge</span><span class="w"> </span><span class="n">远程</span><span class="w"> </span><span class="n">claude</span><span class="p">.</span><span class="n">ai</span><span class="p">]</span>
-<span class="w">    </span><span class="n">RACE</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">L3</span><span class="p">[</span><span class="n">Channel</span><span class="w"> </span><span class="n">远程</span><span class="w"> </span><span class="n">Telegram</span><span class="p">]</span>
-<span class="w">    </span><span class="n">RACE</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">L4</span><span class="p">[</span><span class="n">PermissionRequest</span><span class="w"> </span><span class="n">hooks</span><span class="p">]</span>
-<span class="w">    </span><span class="n">RACE</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">L5</span><span class="p">[</span><span class="n">BASH_CLASSIFIER</span><span class="w"> </span><span class="n">异步</span><span class="p">]</span>
-<span class="w">    </span><span class="n">L1</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">L2</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">L3</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">L4</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">L5</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">CLAIM</span><span class="p">[</span><span class="n">claim</span><span class="w"> </span><span class="n">竞速</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">resolveOnce</span><span class="p">]</span>
-</code></pre></div>
+    INTER --> RACE[多路竞速]
+    RACE --> L1[本地 CLI 对话框]
+    RACE --> L2[Bridge 远程 claude.ai]
+    RACE --> L3[Channel 远程 Telegram]
+    RACE --> L4[PermissionRequest hooks]
+    RACE --> L5[BASH_CLASSIFIER 异步]
+    L1 & L2 & L3 & L4 & L5 --> CLAIM[claim 竞速 → resolveOnce]
+</div>
 
 <hr />
 <h2 id="_2">小结</h2>

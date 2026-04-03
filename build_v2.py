@@ -3,6 +3,7 @@
 Convert Markdown chapters to HTML with proper rendering
 Uses Python-Markdown with extensions for tables, fenced code, etc.
 """
+import re
 import markdown
 from pathlib import Path
 
@@ -207,6 +208,17 @@ def build_chapters():
         with open(md_file, 'r', encoding='utf-8') as f:
             content = f.read()
         
+        # Pre-process: extract mermaid fenced blocks BEFORE markdown conversion
+        # so codehilite doesn't mangle them into syntax-highlighted <pre> blocks.
+        # Replace ```mermaid ... ``` with raw <div class="mermaid">...</div>
+        # which md_in_html extension will pass through unchanged.
+        content = re.sub(
+            r'```mermaid\n(.*?)```',
+            lambda m: f'<div class="mermaid">\n{m.group(1).strip()}\n</div>',
+            content,
+            flags=re.DOTALL
+        )
+
         # Convert to HTML
         html_content = md.convert(content)
         md.reset()  # Reset for next file

@@ -154,46 +154,46 @@
 <h3 id="ai">为什么严格类型对 AI 工具尤为重要</h3>
 <p>普通应用程序的 bug 顶多让界面报错。而 AI 工具的 bug 可能让模型静默地接受无效输入、产生难以追踪的错误行为，或者在权限检查中留下漏洞。</p>
 <p>Claude Code 的类型系统设计回应了这个风险。Zod schema 在工具层是<strong>运行时的边界卫兵</strong>：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/tools/WebFetchTool/WebFetchTool.ts:24-28</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">inputSchema</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">lazySchema</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span>
-<span class="w">  </span><span class="nx">z</span><span class="p">.</span><span class="nx">strictObject</span><span class="p">({</span>
-<span class="w">    </span><span class="nx">url</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">().</span><span class="nx">url</span><span class="p">().</span><span class="nx">describe</span><span class="p">(</span><span class="s1">&#39;The URL to fetch content from&#39;</span><span class="p">),</span>
-<span class="w">    </span><span class="nx">prompt</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">().</span><span class="nx">describe</span><span class="p">(</span><span class="s1">&#39;The prompt to run on the fetched content&#39;</span><span class="p">),</span>
-<span class="w">  </span><span class="p">}),</span>
-<span class="p">)</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// src/tools/WebFetchTool/WebFetchTool.ts:24-28
+const inputSchema = lazySchema(() =&gt;
+  z.strictObject({
+    url: z.string().url().describe('The URL to fetch content from'),
+    prompt: z.string().describe('The prompt to run on the fetched content'),
+  }),
+)
+</code></pre>
 
 <p><code>z.strictObject</code> 而非 <code>z.object</code>——严格模式下，任何未声明的字段都会导致验证失败。这意味着即使模型产生了格式错误的工具调用，也会在边界处被拦截，而不是悄悄流入内部逻辑。</p>
 <h3 id="lazyschema"><code>lazySchema</code> 模式：打破循环依赖</h3>
 <p>整个代码库中大量使用了 <code>lazySchema</code> 包装器：</p>
-<div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">inputSchema</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">lazySchema</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span>
-<span class="w">  </span><span class="nx">z</span><span class="p">.</span><span class="nx">strictObject</span><span class="p">({</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">})</span>
-<span class="p">)</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">const inputSchema = lazySchema(() =&gt;
+  z.strictObject({ ... })
+)
+</code></pre>
 
 <p>这是针对 TypeScript/bundler 模块初始化顺序问题的系统性解决方案：Schema 的求值被推迟到首次调用，完全避免了"循环引用导致初始化时为 undefined"的问题。这不是一次性 hack，而是全项目统一的约定——一种规范化的防御性编程模式。</p>
 <h3 id="_1">类型驱动的权限系统</h3>
 <p>权限错误类型的设计是另一个亮点。<code>PluginError</code>（<code>src/types/plugin.ts</code>）是一个带有 15+ 变体的判别联合类型：</p>
-<div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">PluginError</span><span class="w"> </span><span class="o">=</span>
-<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="kr">type</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;path-not-found&#39;</span><span class="p">;</span><span class="w"> </span><span class="nx">source</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span><span class="w"> </span><span class="nx">path</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span><span class="w"> </span><span class="nx">component</span><span class="o">:</span><span class="w"> </span><span class="kt">PluginComponent</span><span class="w"> </span><span class="p">}</span>
-<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="kr">type</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;git-auth-failed&#39;</span><span class="p">;</span><span class="w"> </span><span class="nx">source</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span><span class="w"> </span><span class="nx">gitUrl</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span><span class="w"> </span><span class="nx">authType</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;ssh&#39;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="s1">&#39;https&#39;</span><span class="w"> </span><span class="p">}</span>
-<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="kr">type</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;manifest-validation-error&#39;</span><span class="p">;</span><span class="w"> </span><span class="nx">validationErrors</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">[]</span><span class="w"> </span><span class="p">}</span>
-<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="kr">type</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;marketplace-blocked-by-policy&#39;</span><span class="p">;</span><span class="w"> </span><span class="nx">allowedSources</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">[]</span><span class="w"> </span><span class="p">}</span>
-<span class="w">  </span><span class="c1">// ...</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">export type PluginError =
+  | { type: 'path-not-found'; source: string; path: string; component: PluginComponent }
+  | { type: 'git-auth-failed'; source: string; gitUrl: string; authType: 'ssh' | 'https' }
+  | { type: 'manifest-validation-error'; validationErrors: string[] }
+  | { type: 'marketplace-blocked-by-policy'; allowedSources: string[] }
+  // ...
+</code></pre>
 
 <p>当你用 <code>switch (error.type)</code> 处理这个类型时，TypeScript 的穷举检查会确保每种错误情况都被处理。这种模式让错误处理代码在类型层面就是完整的，而不只是运行时的 try-catch。</p>
 <hr />
 <h2 id="122-asyncgenerator">12.2 AsyncGenerator 流式传输：优雅与代价</h2>
 <h3 id="_2">模式的本质</h3>
 <p>Claude Code 全面采用 AsyncGenerator 实现 LLM 响应的流式处理。这个模式的优雅之处在于：</p>
-<div class="codehilite"><pre><span></span><code><span class="k">async</span><span class="w"> </span><span class="kd">function</span><span class="o">*</span><span class="w"> </span><span class="nx">queryModelWithStreaming</span><span class="p">(...)</span><span class="o">:</span><span class="w"> </span><span class="nx">AsyncGenerator</span><span class="o">&lt;</span><span class="nx">Event</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">chunk</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="nx">stream</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="k">yield</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="kr">type</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;content_delta&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">text</span><span class="o">:</span><span class="w"> </span><span class="kt">chunk.delta.text</span><span class="w"> </span><span class="p">}</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="w">  </span><span class="k">yield</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="kr">type</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;message_stop&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">usage</span><span class="o">:</span><span class="w"> </span><span class="kt">finalUsage</span><span class="w"> </span><span class="p">}</span>
-<span class="p">}</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">async function* queryModelWithStreaming(...): AsyncGenerator&lt;Event&gt; {
+  for await (const chunk of stream) {
+    yield { type: 'content_delta', text: chunk.delta.text }
+  }
+  yield { type: 'message_stop', usage: finalUsage }
+}
+</code></pre>
 
 <p>调用者用 <code>for await...of</code> 消费事件流，既可以实时更新 UI，也可以在任意点中断（通过 AbortSignal）。整个管道是惰性的：上游不产生，下游不消费，背压（backpressure）天然成立。</p>
 <h3 id="_3">代价：调试复杂度</h3>
@@ -217,52 +217,53 @@
 <h2 id="124">12.4 模块化工具系统：通过接口定义可扩展性</h2>
 <h3 id="buildtool"><code>buildTool</code> 工厂：约定胜于配置</h3>
 <p>所有工具都通过同一个工厂函数创建：</p>
-<div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">SomeTool</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">buildTool</span><span class="p">({</span>
-<span class="w">  </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;ToolName&#39;</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">description</span><span class="p">(</span><span class="nx">input</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">},</span>
-<span class="w">  </span><span class="nx">inputSchema</span><span class="o">:</span><span class="w"> </span><span class="kt">lazySchema</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">z</span><span class="p">.</span><span class="nx">strictObject</span><span class="p">({</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">})),</span>
-<span class="w">  </span><span class="nx">outputSchema</span><span class="o">:</span><span class="w"> </span><span class="kt">lazySchema</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">z</span><span class="p">.</span><span class="nx">object</span><span class="p">({</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">})),</span>
-<span class="w">  </span><span class="nx">checkPermissions</span><span class="p">(</span><span class="nx">input</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">},</span>
-<span class="w">  </span><span class="nx">call</span><span class="p">(</span><span class="nx">input</span><span class="p">,</span><span class="w"> </span><span class="nx">context</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">},</span>
-<span class="w">  </span><span class="nx">renderToolUseMessage</span><span class="p">(</span><span class="nx">input</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">},</span>
-<span class="w">  </span><span class="nx">renderToolResultMessage</span><span class="p">(</span><span class="nx">output</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">},</span>
-<span class="p">})</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">export const SomeTool = buildTool({
+  name: 'ToolName',
+  description(input) { ... },
+  inputSchema: lazySchema(() =&gt; z.strictObject({ ... })),
+  outputSchema: lazySchema(() =&gt; z.object({ ... })),
+  checkPermissions(input) { ... },
+  call(input, context) { ... },
+  renderToolUseMessage(input) { ... },
+  renderToolResultMessage(output) { ... },
+})
+</code></pre>
 
 <p>这个接口设计将工具的六个关注点分离：名称/描述、输入验证、输出验证、权限检查、执行逻辑、UI 渲染。每个工具都必须实现完整的接口，不能只实现执行逻辑而忽略权限检查——这是架构层面的强制约束。</p>
 <h3 id="_5">工具结果的大小管控</h3>
 <p>每个工具都有 <code>maxResultSizeChars</code> 字段：</p>
-<div class="codehilite"><pre><span></span><code><span class="nx">maxResultSizeChars</span><span class="o">:</span><span class="w"> </span><span class="kt">100_000</span><span class="p">,</span><span class="w"> </span><span class="c1">// WebFetchTool</span>
-<span class="nx">maxResultSizeChars</span><span class="o">:</span><span class="w"> </span><span class="kt">100_000</span><span class="p">,</span><span class="w"> </span><span class="c1">// TodoWriteTool</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">maxResultSizeChars: 100_000, // WebFetchTool
+maxResultSizeChars: 100_000, // TodoWriteTool
+</code></pre>
 
 <p>这个设计防止了大型工具结果（如巨大的文件读取）无限制地消耗上下文窗口。工具结果会在持久化阈值处被截断，超出部分存入外部存储并用引用替代——这与历史记录的粘贴内容引用机制是同一种思路的不同应用。</p>
 <hr />
 <h2 id="125">12.5 权限系统：安全性而不牺牲可用性</h2>
 <h3 id="_6">多层防御架构</h3>
-<div class="codehilite"><pre><span></span><code><span class="nf">graph</span><span class="w"> </span><span class="n">TD</span>
-<span class="w">    </span><span class="n">A</span><span class="p">[</span><span class="err">工具调用请求</span><span class="p">]</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">B</span><span class="p">{</span><span class="n">checkPermissions</span><span class="p">}</span>
-<span class="w">    </span><span class="n">B</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">allow</span><span class="o">|</span><span class="w"> </span><span class="n">C</span><span class="p">[</span><span class="err">执行工具</span><span class="p">]</span>
-<span class="w">    </span><span class="n">B</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">ask</span><span class="o">|</span><span class="w"> </span><span class="n">D</span><span class="p">[</span><span class="err">弹出确认</span><span class="n">UI</span><span class="p">]</span>
-<span class="w">    </span><span class="n">B</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">deny</span><span class="o">|</span><span class="w"> </span><span class="n">E</span><span class="p">[</span><span class="err">拒绝并解释原因</span><span class="p">]</span>
+<div class="mermaid">
+graph TD
+    A[工具调用请求] --> B{checkPermissions}
+    B -->|allow| C[执行工具]
+    B -->|ask| D[弹出确认UI]
+    B -->|deny| E[拒绝并解释原因]
 
-<span class="w">    </span><span class="n">F</span><span class="p">[</span><span class="err">权限规则语法</span><span class="p">]</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">B</span>
-<span class="w">    </span><span class="n">G</span><span class="p">[</span><span class="err">危险目录检查</span><span class="p">]</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">B</span>
-<span class="w">    </span><span class="n">H</span><span class="p">[</span><span class="n">CLAUDE</span><span class="p">.</span><span class="n">md</span><span class="w"> </span><span class="err">白名单</span><span class="p">]</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">B</span>
+    F[权限规则语法] --> B
+    G[危险目录检查] --> B
+    H[CLAUDE.md 白名单] --> B
 
-<span class="w">    </span><span class="n">I</span><span class="p">[</span><span class="err">预审批主机列表</span><span class="p">]</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">B</span>
-<span class="w">    </span><span class="n">J</span><span class="p">[</span><span class="err">沙盒网络限制</span><span class="p">]</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">C</span>
-</code></pre></div>
+    I[预审批主机列表] --> B
+    J[沙盒网络限制] --> C
+</div>
 
 <p>权限系统的核心原则：<strong>拒绝是默认值，允许需要明确授权</strong>。但设计上又非常注意可用性——130+ 个预审批文档域名无需授权，内存目录的写操作有专门的豁免通道（<code>isAutoMemPath</code>），以避免用户为每次记忆写入都手动确认。</p>
 <h3 id="_7">安全注释的价值</h3>
 <p>Claude Code 的代码中有大量专门解释安全决策的注释，例如：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/memdir/paths.ts:172-177</span>
-<span class="c1">// SECURITY: projectSettings (.claude/settings.json committed to the repo) is</span>
-<span class="c1">// intentionally excluded — a malicious repo could otherwise set</span>
-<span class="c1">// autoMemoryDirectory: &quot;~/.ssh&quot; and gain silent write access to sensitive</span>
-<span class="c1">// directories via the filesystem.ts write carve-out.</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// src/memdir/paths.ts:172-177
+// SECURITY: projectSettings (.claude/settings.json committed to the repo) is
+// intentionally excluded — a malicious repo could otherwise set
+// autoMemoryDirectory: &quot;~/.ssh&quot; and gain silent write access to sensitive
+// directories via the filesystem.ts write carve-out.
+</code></pre>
 
 <p>这类注释不仅解释了"是什么"，更解释了"为什么不那样做"。对于安全敏感的代码，这种防御性注释是团队知识的最佳载体——六个月后的新工程师不会因为"这个限制看起来很奇怪"而把它改掉。</p>
 <hr />
@@ -286,8 +287,8 @@
 <p>记忆文件强制要求 frontmatter（name、description、type）；工具结果有 Schema 约束；权限规则有专门的语法格式。结构化数据让模型可以做精确匹配，而非依赖语义理解来提取关键信息。</p>
 <p><strong>3. 上下文的时效性管理</strong></p>
 <p>记忆系统明确区分"可从代码推导的"（不应存入记忆）和"不可推导的"（应当存入）。系统提示中专门有"Before recommending from memory"段，提醒模型验证记忆的时效性：</p>
-<div class="codehilite"><pre><span></span><code>&quot;The memory says X exists&quot; is not the same as &quot;X exists now.&quot;
-</code></pre></div>
+<pre class="codehilite"><code>&quot;The memory says X exists&quot; is not the same as &quot;X exists now.&quot;
+</code></pre>
 
 <p>这是对 LLM 幻觉风险的直接防御性设计——不只是让模型记住，还要让模型知道记忆可能过时。</p>
 <hr />

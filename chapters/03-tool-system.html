@@ -151,14 +151,14 @@
 </blockquote>
 <h2 id="31-tool">3.1 Tool 接口：系统的核心契约</h2>
 <p>所有工具的类型定义集中在 <code>src/Tool.ts</code>。核心是一个三参数泛型接口（<code>src/Tool.ts:362-366</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">Tool</span><span class="o">&lt;</span>
-<span class="w">  </span><span class="nx">Input</span><span class="w"> </span><span class="k">extends</span><span class="w"> </span><span class="nx">AnyObject</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">AnyObject</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">Output</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">unknown</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">P</span><span class="w"> </span><span class="k">extends</span><span class="w"> </span><span class="nx">ToolProgressData</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">ToolProgressData</span><span class="p">,</span>
-<span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="c1">// ...</span>
-<span class="p">}</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">export type Tool&lt;
+  Input extends AnyObject = AnyObject,
+  Output = unknown,
+  P extends ToolProgressData = ToolProgressData,
+&gt; = {
+  // ...
+}
+</code></pre>
 
 <p>三个类型参数的含义：
 - <code>Input</code>：工具输入的 Zod Schema 类型，约束了模型能传递的参数结构
@@ -167,116 +167,116 @@
 <p><code>AnyObject</code> 被定义为 <code>z.ZodType&lt;{ [key: string]: unknown }&gt;</code>（<code>src/Tool.ts:343</code>），确保所有工具输入都是可 JSON 化的对象。</p>
 <h2 id="32-tool">3.2 Tool 接口的关键方法</h2>
 <h3 id="call">call()：核心执行方法</h3>
-<div class="codehilite"><pre><span></span><code><span class="nx">call</span><span class="p">(</span>
-<span class="w">  </span><span class="nx">args</span><span class="o">:</span><span class="w"> </span><span class="kt">z.infer</span><span class="o">&lt;</span><span class="nx">Input</span><span class="o">&gt;</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">context</span><span class="o">:</span><span class="w"> </span><span class="kt">ToolUseContext</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">canUseTool</span><span class="o">:</span><span class="w"> </span><span class="kt">CanUseToolFn</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">parentMessage</span><span class="o">:</span><span class="w"> </span><span class="kt">AssistantMessage</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">onProgress?</span><span class="o">:</span><span class="w"> </span><span class="kt">ToolCallProgress</span><span class="o">&lt;</span><span class="nx">P</span><span class="o">&gt;</span><span class="p">,</span>
-<span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="nx">ToolResult</span><span class="o">&lt;</span><span class="nx">Output</span><span class="o">&gt;&gt;</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">call(
+  args: z.infer&lt;Input&gt;,
+  context: ToolUseContext,
+  canUseTool: CanUseToolFn,
+  parentMessage: AssistantMessage,
+  onProgress?: ToolCallProgress&lt;P&gt;,
+): Promise&lt;ToolResult&lt;Output&gt;&gt;
+</code></pre>
 
 <p><code>call()</code> 接收五个参数。其中 <code>canUseTool</code> 是一个回调函数，允许工具在执行过程中动态请求额外权限（例如 AgentTool 为子代理请求权限）。<code>onProgress</code> 是可选的流式进度回调，用于向 UI 推送中间状态。</p>
 <h3 id="checkpermissions">checkPermissions()：权限决策</h3>
-<div class="codehilite"><pre><span></span><code><span class="nx">checkPermissions</span><span class="p">(</span>
-<span class="w">  </span><span class="nx">input</span><span class="o">:</span><span class="w"> </span><span class="kt">z.infer</span><span class="o">&lt;</span><span class="nx">Input</span><span class="o">&gt;</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">context</span><span class="o">:</span><span class="w"> </span><span class="kt">ToolUseContext</span><span class="p">,</span>
-<span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="nx">PermissionResult</span><span class="o">&gt;</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">checkPermissions(
+  input: z.infer&lt;Input&gt;,
+  context: ToolUseContext,
+): Promise&lt;PermissionResult&gt;
+</code></pre>
 
 <p>这是工具<strong>特定</strong>权限逻辑的入口。通用权限逻辑（模式检查、规则匹配）在 <code>permissions.ts</code> 中，而工具特定的判断（例如 BashTool 解析命令语义）在这里实现。</p>
 <h3 id="validateinput">validateInput()：语义验证</h3>
-<div class="codehilite"><pre><span></span><code><span class="nx">validateInput</span><span class="o">?</span><span class="p">(</span>
-<span class="w">  </span><span class="nx">input</span><span class="o">:</span><span class="w"> </span><span class="kt">z.infer</span><span class="o">&lt;</span><span class="nx">Input</span><span class="o">&gt;</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">context</span><span class="o">:</span><span class="w"> </span><span class="kt">ToolUseContext</span><span class="p">,</span>
-<span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="nx">ValidationResult</span><span class="o">&gt;</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">validateInput?(
+  input: z.infer&lt;Input&gt;,
+  context: ToolUseContext,
+): Promise&lt;ValidationResult&gt;
+</code></pre>
 
 <p>在 <code>checkPermissions()</code> 之前调用，用于验证输入的语义合法性（而非 Zod 提供的结构验证）。例如检查文件路径是否合理、命令是否包含禁止的模式。</p>
 <h3 id="isreadonly-isdestructive">isReadOnly() 和 isDestructive()</h3>
-<div class="codehilite"><pre><span></span><code><span class="nx">isReadOnly</span><span class="p">(</span><span class="nx">input</span><span class="o">:</span><span class="w"> </span><span class="kt">z.infer</span><span class="o">&lt;</span><span class="nx">Input</span><span class="o">&gt;</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span>
-<span class="nx">isDestructive</span><span class="o">?</span><span class="p">(</span><span class="nx">input</span><span class="o">:</span><span class="w"> </span><span class="kt">z.infer</span><span class="o">&lt;</span><span class="nx">Input</span><span class="o">&gt;</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">isReadOnly(input: z.infer&lt;Input&gt;): boolean
+isDestructive?(input: z.infer&lt;Input&gt;): boolean
+</code></pre>
 
 <p>这两个方法用于工具分类。<code>isReadOnly</code> 返回 <code>true</code> 的工具（如 FileReadTool、GrepTool）在 <code>--permission-mode=read-only</code> 下无需询问用户。<code>isDestructive</code> 标记不可逆操作（删除、覆盖写入、发送消息），会在 UI 中以特殊样式提示用户。</p>
 <p>注意 <code>isDestructive</code> 是可选方法（默认为 <code>false</code>），而 <code>isReadOnly</code> 是必须实现的方法，默认值由 <code>buildTool()</code> 提供（<code>src/Tool.ts:757-769</code>）。</p>
 <h3 id="prompt">prompt()：系统提示生成</h3>
-<div class="codehilite"><pre><span></span><code><span class="nx">prompt</span><span class="p">(</span><span class="nx">options</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="nx">getToolPermissionContext</span><span class="o">:</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="nx">ToolPermissionContext</span><span class="o">&gt;</span>
-<span class="w">  </span><span class="nx">tools</span><span class="o">:</span><span class="w"> </span><span class="kt">Tools</span>
-<span class="w">  </span><span class="nx">agents</span><span class="o">:</span><span class="w"> </span><span class="kt">AgentDefinition</span><span class="p">[]</span>
-<span class="w">  </span><span class="nx">allowedAgentTypes?</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">[]</span>
-<span class="p">})</span><span class="o">:</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="kt">string</span><span class="o">&gt;</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">prompt(options: {
+  getToolPermissionContext: () =&gt; Promise&lt;ToolPermissionContext&gt;
+  tools: Tools
+  agents: AgentDefinition[]
+  allowedAgentTypes?: string[]
+}): Promise&lt;string&gt;
+</code></pre>
 
 <p>每个工具负责生成自己在系统提示中的描述文本。这使得工具能够根据当前权限上下文动态调整描述——例如在只读模式下，BashTool 的描述会省略写入相关的示例。</p>
 <h3 id="userfacingname">userFacingName()：显示名称</h3>
-<div class="codehilite"><pre><span></span><code><span class="nx">userFacingName</span><span class="p">(</span><span class="nx">input</span><span class="o">:</span><span class="w"> </span><span class="kt">Partial</span><span class="o">&lt;</span><span class="nx">z</span><span class="p">.</span><span class="nx">infer</span><span class="o">&lt;</span><span class="nx">Input</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">undefined</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">userFacingName(input: Partial&lt;z.infer&lt;Input&gt;&gt; | undefined): string
+</code></pre>
 
 <p>接收<strong>部分</strong>输入（因为流式传输时参数可能还未完整到达），返回用户界面展示的名称。例如 BashTool 会在执行 <code>git status</code> 时显示 "Bash(git status)" 而非纯粹的 "Bash"。</p>
 <h2 id="33-toolresult">3.3 ToolResult 类型</h2>
 <p>工具执行结果被包装在 <code>ToolResult&lt;T&gt;</code> 中（<code>src/Tool.ts:321-336</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">ToolResult</span><span class="o">&lt;</span><span class="nx">T</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="nx">data</span><span class="o">:</span><span class="w"> </span><span class="kt">T</span>
-<span class="w">  </span><span class="nx">newMessages</span><span class="o">?:</span><span class="w"> </span><span class="p">(</span><span class="nx">UserMessage</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nx">AssistantMessage</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nx">AttachmentMessage</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nx">SystemMessage</span><span class="p">)[]</span>
-<span class="w">  </span><span class="nx">contextModifier</span><span class="o">?:</span><span class="w"> </span><span class="p">(</span><span class="nx">context</span><span class="o">:</span><span class="w"> </span><span class="kt">ToolUseContext</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">ToolUseContext</span>
-<span class="w">  </span><span class="nx">mcpMeta</span><span class="o">?:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nx">_meta?</span><span class="o">:</span><span class="w"> </span><span class="kt">Record</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">unknown</span><span class="o">&gt;</span>
-<span class="w">    </span><span class="nx">structuredContent?</span><span class="o">:</span><span class="w"> </span><span class="kt">Record</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">unknown</span><span class="o">&gt;</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="p">}</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">export type ToolResult&lt;T&gt; = {
+  data: T
+  newMessages?: (UserMessage | AssistantMessage | AttachmentMessage | SystemMessage)[]
+  contextModifier?: (context: ToolUseContext) =&gt; ToolUseContext
+  mcpMeta?: {
+    _meta?: Record&lt;string, unknown&gt;
+    structuredContent?: Record&lt;string, unknown&gt;
+  }
+}
+</code></pre>
 
 <p><code>contextModifier</code> 是一个强大但受限的能力——工具可以通过它修改后续工具调用的上下文（例如切换工作目录），但只对非并发安全的工具有效（注释中明确说明：<code>contextModifier is only honored for tools that aren't concurrency safe</code>）。</p>
 <h2 id="34-toolusecontext">3.4 ToolUseContext：运行时上下文对象</h2>
 <p><code>ToolUseContext</code> 是传递给每个工具调用的运行时"环境"，包含数十个字段（<code>src/Tool.ts:158-300</code>）。主要分组如下：</p>
 <p><strong>配置选项</strong></p>
-<div class="codehilite"><pre><span></span><code><span class="nx">options</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="nx">commands</span><span class="o">:</span><span class="w"> </span><span class="kt">Command</span><span class="p">[]</span>
-<span class="w">  </span><span class="nx">debug</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span>
-<span class="w">  </span><span class="nx">mainLoopModel</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
-<span class="w">  </span><span class="nx">tools</span><span class="o">:</span><span class="w"> </span><span class="kt">Tools</span>
-<span class="w">  </span><span class="nx">verbose</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span>
-<span class="w">  </span><span class="nx">thinkingConfig</span><span class="o">:</span><span class="w"> </span><span class="kt">ThinkingConfig</span>
-<span class="w">  </span><span class="nx">mcpClients</span><span class="o">:</span><span class="w"> </span><span class="kt">MCPServerConnection</span><span class="p">[]</span>
-<span class="w">  </span><span class="nx">isNonInteractiveSession</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span>
-<span class="w">  </span><span class="c1">// ...</span>
-<span class="p">}</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">options: {
+  commands: Command[]
+  debug: boolean
+  mainLoopModel: string
+  tools: Tools
+  verbose: boolean
+  thinkingConfig: ThinkingConfig
+  mcpClients: MCPServerConnection[]
+  isNonInteractiveSession: boolean
+  // ...
+}
+</code></pre>
 
 <p><strong>状态访问</strong></p>
-<div class="codehilite"><pre><span></span><code><span class="nx">abortController</span><span class="o">:</span><span class="w"> </span><span class="kt">AbortController</span><span class="w">      </span><span class="c1">// 用于取消正在执行的工具</span>
-<span class="nx">readFileState</span><span class="o">:</span><span class="w"> </span><span class="kt">FileStateCache</span><span class="w">          </span><span class="c1">// 文件读取缓存（用于检测过期写入）</span>
-<span class="nx">getAppState</span><span class="p">()</span><span class="o">:</span><span class="w"> </span><span class="nx">AppState</span>
-<span class="nx">setAppState</span><span class="p">(</span><span class="nx">f</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="nx">prev</span><span class="o">:</span><span class="w"> </span><span class="kt">AppState</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">AppState</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span>
-<span class="nx">messages</span><span class="o">:</span><span class="w"> </span><span class="kt">Message</span><span class="p">[]</span><span class="w">                    </span><span class="c1">// 完整的对话历史</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">abortController: AbortController      // 用于取消正在执行的工具
+readFileState: FileStateCache          // 文件读取缓存（用于检测过期写入）
+getAppState(): AppState
+setAppState(f: (prev: AppState) =&gt; AppState): void
+messages: Message[]                    // 完整的对话历史
+</code></pre>
 
 <p><strong>UI 回调</strong>（仅交互模式可用）</p>
-<div class="codehilite"><pre><span></span><code><span class="nx">setToolJSX?</span><span class="o">:</span><span class="w"> </span><span class="kt">SetToolJSXFn</span><span class="w">             </span><span class="c1">// 向 UI 注入自定义 React 节点</span>
-<span class="nx">addNotification</span><span class="o">?:</span><span class="w"> </span><span class="p">(</span><span class="nx">notif</span><span class="o">:</span><span class="w"> </span><span class="kt">Notification</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="ow">void</span>
-<span class="nx">appendSystemMessage</span><span class="o">?:</span><span class="w"> </span><span class="p">(...)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="ow">void</span>
-<span class="nx">sendOSNotification</span><span class="o">?:</span><span class="w"> </span><span class="p">(...)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="ow">void</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">setToolJSX?: SetToolJSXFn             // 向 UI 注入自定义 React 节点
+addNotification?: (notif: Notification) =&gt; void
+appendSystemMessage?: (...) =&gt; void
+sendOSNotification?: (...) =&gt; void
+</code></pre>
 
 <p><strong>子代理支持</strong></p>
-<div class="codehilite"><pre><span></span><code><span class="nx">agentId?</span><span class="o">:</span><span class="w"> </span><span class="kt">AgentId</span><span class="w">                     </span><span class="c1">// 仅子代理设置</span>
-<span class="nx">agentType?</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w">                    </span><span class="c1">// 子代理类型名</span>
-<span class="nx">setAppStateForTasks</span><span class="o">?:</span><span class="w"> </span><span class="p">(...)</span><span class="w">           </span><span class="c1">// 跨代理层级的状态更新</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">agentId?: AgentId                     // 仅子代理设置
+agentType?: string                    // 子代理类型名
+setAppStateForTasks?: (...)           // 跨代理层级的状态更新
+</code></pre>
 
 <p><code>ToolUseContext</code> 设计为<strong>深度不可变</strong>（<code>DeepImmutable&lt;...&gt;</code>）的权限上下文字段，确保工具不能篡改权限规则。</p>
 <h2 id="35-buildtool">3.5 buildTool()：工具构造辅助函数</h2>
 <p>直接实现 <code>Tool</code> 接口需要提供所有方法，包括许多有合理默认值的方法。<code>buildTool()</code> 解决了这个问题（<code>src/Tool.ts:783-792</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">buildTool</span><span class="o">&lt;</span><span class="nx">D</span><span class="w"> </span><span class="k">extends</span><span class="w"> </span><span class="nx">AnyToolDef</span><span class="o">&gt;</span><span class="p">(</span><span class="nx">def</span><span class="o">:</span><span class="w"> </span><span class="kt">D</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">BuiltTool</span><span class="o">&lt;</span><span class="nx">D</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="p">...</span><span class="nx">TOOL_DEFAULTS</span><span class="p">,</span>
-<span class="w">    </span><span class="nx">userFacingName</span><span class="o">:</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">def</span><span class="p">.</span><span class="nx">name</span><span class="p">,</span>
-<span class="w">    </span><span class="p">...</span><span class="nx">def</span><span class="p">,</span>
-<span class="w">  </span><span class="p">}</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="nx">BuiltTool</span><span class="o">&lt;</span><span class="nx">D</span><span class="o">&gt;</span>
-<span class="p">}</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">export function buildTool&lt;D extends AnyToolDef&gt;(def: D): BuiltTool&lt;D&gt; {
+  return {
+    ...TOOL_DEFAULTS,
+    userFacingName: () =&gt; def.name,
+    ...def,
+  } as BuiltTool&lt;D&gt;
+}
+</code></pre>
 
 <p>默认值（<code>src/Tool.ts:757-769</code>，注释标注了安全策略为"fail-closed"）：
 - <code>isEnabled</code> → <code>true</code>
@@ -289,97 +289,97 @@
 <p><code>ToolDef</code> 类型是 <code>Tool</code> 的偏应用版本，所有可被默认填充的方法都是可选的。</p>
 <h2 id="36">3.6 工具注册与发现</h2>
 <p>所有工具在 <code>src/tools.ts</code> 中统一注册。<code>getAllBaseTools()</code> 函数是工具集合的真实来源（<code>src/tools.ts:193</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">getAllBaseTools</span><span class="p">()</span><span class="o">:</span><span class="w"> </span><span class="nx">Tools</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">[</span>
-<span class="w">    </span><span class="nx">AgentTool</span><span class="p">,</span>
-<span class="w">    </span><span class="nx">TaskOutputTool</span><span class="p">,</span>
-<span class="w">    </span><span class="nx">BashTool</span><span class="p">,</span>
-<span class="w">    </span><span class="nx">GrepTool</span><span class="p">,</span>
-<span class="w">    </span><span class="nx">FileReadTool</span><span class="p">,</span>
-<span class="w">    </span><span class="nx">FileEditTool</span><span class="p">,</span>
-<span class="w">    </span><span class="nx">FileWriteTool</span><span class="p">,</span>
-<span class="w">    </span><span class="nx">GlobTool</span><span class="p">,</span>
-<span class="w">    </span><span class="c1">// ...</span>
-<span class="w">  </span><span class="p">]</span>
-<span class="p">}</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">export function getAllBaseTools(): Tools {
+  return [
+    AgentTool,
+    TaskOutputTool,
+    BashTool,
+    GrepTool,
+    FileReadTool,
+    FileEditTool,
+    FileWriteTool,
+    GlobTool,
+    // ...
+  ]
+}
+</code></pre>
 
 <p>动态工具（受特性标志或环境变量控制）通过条件 <code>require()</code> 在模块顶层注册，利用 <code>bun:bundle</code> 的死代码消除能力确保未启用的工具不会被打包（<code>src/tools.ts:16-135</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">REPLTool</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">process</span><span class="p">.</span><span class="nx">env</span><span class="p">.</span><span class="nx">USER_TYPE</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;ant&#39;</span>
-<span class="w">  </span><span class="o">?</span><span class="w"> </span><span class="nx">require</span><span class="p">(</span><span class="s1">&#39;./tools/REPLTool/REPLTool.js&#39;</span><span class="p">)</span><span class="nx">.REPLTool</span>
-<span class="w">  </span><span class="o">:</span><span class="w"> </span><span class="kt">null</span>
+<pre class="codehilite"><code class="language-typescript">const REPLTool = process.env.USER_TYPE === 'ant'
+  ? require('./tools/REPLTool/REPLTool.js').REPLTool
+  : null
 
-<span class="kd">const</span><span class="w"> </span><span class="nx">SleepTool</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">feature</span><span class="p">(</span><span class="s1">&#39;PROACTIVE&#39;</span><span class="p">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">feature</span><span class="p">(</span><span class="s1">&#39;KAIROS&#39;</span><span class="p">)</span>
-<span class="w">  </span><span class="o">?</span><span class="w"> </span><span class="nx">require</span><span class="p">(</span><span class="s1">&#39;./tools/SleepTool/SleepTool.js&#39;</span><span class="p">)</span><span class="nx">.SleepTool</span>
-<span class="w">  </span><span class="o">:</span><span class="w"> </span><span class="kt">null</span>
-</code></pre></div>
+const SleepTool = feature('PROACTIVE') || feature('KAIROS')
+  ? require('./tools/SleepTool/SleepTool.js').SleepTool
+  : null
+</code></pre>
 
 <p>MCP 工具则在运行时动态生成并加入工具集合，不在静态列表中。</p>
 <h2 id="37-zod-schema-lazyschema">3.7 Zod Schema 验证：lazySchema 模式</h2>
 <p>所有工具使用 Zod v4 定义输入 Schema，并搭配 <code>lazySchema()</code> 辅助函数延迟初始化（<code>src/tools/BashTool/BashTool.tsx:227</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">fullInputSchema</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">lazySchema</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">z</span><span class="p">.</span><span class="nx">strictObject</span><span class="p">({</span>
-<span class="w">  </span><span class="nx">command</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">().</span><span class="nx">describe</span><span class="p">(</span><span class="s1">&#39;The command to execute&#39;</span><span class="p">),</span>
-<span class="w">  </span><span class="nx">timeout</span><span class="o">:</span><span class="w"> </span><span class="kt">semanticNumber</span><span class="p">(</span><span class="nx">z</span><span class="p">.</span><span class="kt">number</span><span class="p">().</span><span class="nx">optional</span><span class="p">()).</span><span class="nx">describe</span><span class="p">(</span>
-<span class="w">    </span><span class="sb">`Optional timeout in milliseconds (max </span><span class="si">${</span><span class="nx">getMaxTimeoutMs</span><span class="p">()</span><span class="si">}</span><span class="sb">)`</span>
-<span class="w">  </span><span class="p">),</span>
-<span class="w">  </span><span class="nx">description</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">().</span><span class="nx">optional</span><span class="p">().</span><span class="nx">describe</span><span class="p">(</span><span class="sb">`...`</span><span class="p">),</span>
-<span class="w">  </span><span class="nx">run_in_background</span><span class="o">:</span><span class="w"> </span><span class="kt">semanticBoolean</span><span class="p">(</span><span class="nx">z</span><span class="p">.</span><span class="kt">boolean</span><span class="p">().</span><span class="nx">optional</span><span class="p">()).</span><span class="nx">describe</span><span class="p">(</span><span class="sb">`...`</span><span class="p">),</span>
-<span class="w">  </span><span class="nx">dangerouslyDisableSandbox</span><span class="o">:</span><span class="w"> </span><span class="kt">semanticBoolean</span><span class="p">(</span><span class="nx">z</span><span class="p">.</span><span class="kt">boolean</span><span class="p">().</span><span class="nx">optional</span><span class="p">()).</span><span class="nx">describe</span><span class="p">(</span><span class="s1">&#39;...&#39;</span><span class="p">),</span>
-<span class="p">}));</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">const fullInputSchema = lazySchema(() =&gt; z.strictObject({
+  command: z.string().describe('The command to execute'),
+  timeout: semanticNumber(z.number().optional()).describe(
+    `Optional timeout in milliseconds (max ${getMaxTimeoutMs()})`
+  ),
+  description: z.string().optional().describe(`...`),
+  run_in_background: semanticBoolean(z.boolean().optional()).describe(`...`),
+  dangerouslyDisableSandbox: semanticBoolean(z.boolean().optional()).describe('...'),
+}));
+</code></pre>
 
 <p><code>lazySchema()</code> 的作用是延迟 Schema 的创建，避免在模块加载时就调用需要配置读取的函数（如 <code>getMaxTimeoutMs()</code>）。<code>semanticNumber</code> 和 <code>semanticBoolean</code> 是自定义 Zod 装饰器，允许模型传入字符串形式的数字/布尔值（如 <code>"true"</code> 或 <code>"5000"</code>）并自动转换，增加对模型输出的容错性。</p>
 <h2 id="38-bashtool">3.8 典型工具解析：BashTool</h2>
 <p>BashTool 是系统中最复杂、最重要的工具（<code>src/tools/BashTool/BashTool.tsx</code>）。</p>
 <p><strong>Schema 设计的安全考量</strong></p>
 <p><code>_simulatedSedEdit</code> 字段是一个内部字段，永远不会暴露给模型（<code>src/tools/BashTool/BashTool.tsx:249-258</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// Always omit _simulatedSedEdit from the model-facing schema.</span>
-<span class="c1">// Exposing it would let the model bypass permission checks and the sandbox</span>
-<span class="c1">// by pairing an innocuous command with an arbitrary file write.</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">inputSchema</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">lazySchema</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span>
-<span class="w">  </span><span class="nx">isBackgroundTasksDisabled</span>
-<span class="w">    </span><span class="o">?</span><span class="w"> </span><span class="nx">fullInputSchema</span><span class="p">().</span><span class="nx">omit</span><span class="p">({</span><span class="w"> </span><span class="nx">run_in_background</span><span class="o">:</span><span class="w"> </span><span class="kt">true</span><span class="p">,</span><span class="w"> </span><span class="nx">_simulatedSedEdit</span><span class="o">:</span><span class="w"> </span><span class="kt">true</span><span class="w"> </span><span class="p">})</span>
-<span class="w">    </span><span class="o">:</span><span class="w"> </span><span class="nx">fullInputSchema</span><span class="p">().</span><span class="nx">omit</span><span class="p">({</span><span class="w"> </span><span class="nx">_simulatedSedEdit</span><span class="o">:</span><span class="w"> </span><span class="kt">true</span><span class="w"> </span><span class="p">})</span>
-<span class="p">);</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// Always omit _simulatedSedEdit from the model-facing schema.
+// Exposing it would let the model bypass permission checks and the sandbox
+// by pairing an innocuous command with an arbitrary file write.
+const inputSchema = lazySchema(() =&gt;
+  isBackgroundTasksDisabled
+    ? fullInputSchema().omit({ run_in_background: true, _simulatedSedEdit: true })
+    : fullInputSchema().omit({ _simulatedSedEdit: true })
+);
+</code></pre>
 
 <p><strong>命令语义分类</strong></p>
 <p>BashTool 维护了多个命令集合用于 UI 折叠显示（<code>src/tools/BashTool/BashTool.tsx:60-81</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">BASH_SEARCH_COMMANDS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nb">Set</span><span class="p">([</span><span class="s1">&#39;find&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;grep&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;rg&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;ag&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;ack&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;locate&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">...]);</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">BASH_READ_COMMANDS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nb">Set</span><span class="p">([</span><span class="s1">&#39;cat&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;head&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;tail&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;less&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;jq&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;awk&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">...]);</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">BASH_LIST_COMMANDS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nb">Set</span><span class="p">([</span><span class="s1">&#39;ls&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;tree&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;du&#39;</span><span class="p">]);</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">BASH_SILENT_COMMANDS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nb">Set</span><span class="p">([</span><span class="s1">&#39;mv&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;cp&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;rm&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;mkdir&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;chmod&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">...]);</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">const BASH_SEARCH_COMMANDS = new Set(['find', 'grep', 'rg', 'ag', 'ack', 'locate', ...]);
+const BASH_READ_COMMANDS = new Set(['cat', 'head', 'tail', 'less', 'jq', 'awk', ...]);
+const BASH_LIST_COMMANDS = new Set(['ls', 'tree', 'du']);
+const BASH_SILENT_COMMANDS = new Set(['mv', 'cp', 'rm', 'mkdir', 'chmod', ...]);
+</code></pre>
 
 <p><code>isSearchOrReadBashCommand()</code> 函数解析管道命令（使用 bash AST 解析器），确定整个命令链是否为只读/搜索性质，从而决定是否在 UI 中折叠展示。</p>
 <p><strong>权限系统</strong></p>
 <p>BashTool 的权限逻辑在 <code>src/tools/BashTool/bashPermissions.ts</code> 中，通过 bash AST 解析实现细粒度的命令语义理解——支持通配符规则（如 <code>git *</code>）、路径约束、操作符检查（防止 <code>safe-cmd &amp;&amp; dangerous-cmd</code> 绕过）等。</p>
 <p><strong>输出 Schema</strong></p>
 <p>BashTool 的输出 Schema 同样完整（<code>src/tools/BashTool/BashTool.tsx:279-294</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">outputSchema</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">lazySchema</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">z</span><span class="p">.</span><span class="nx">object</span><span class="p">({</span>
-<span class="w">  </span><span class="nx">stdout</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">(),</span>
-<span class="w">  </span><span class="nx">stderr</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">(),</span>
-<span class="w">  </span><span class="nx">interrupted</span><span class="o">:</span><span class="w"> </span><span class="kt">z.boolean</span><span class="p">(),</span>
-<span class="w">  </span><span class="nx">backgroundTaskId</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">().</span><span class="nx">optional</span><span class="p">(),</span>
-<span class="w">  </span><span class="nx">persistedOutputPath</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">().</span><span class="nx">optional</span><span class="p">(),</span><span class="w"> </span><span class="c1">// 输出过大时持久化到磁盘</span>
-<span class="w">  </span><span class="nx">persistedOutputSize</span><span class="o">:</span><span class="w"> </span><span class="kt">z.number</span><span class="p">().</span><span class="nx">optional</span><span class="p">(),</span>
-<span class="w">  </span><span class="c1">// ...</span>
-<span class="p">}));</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">const outputSchema = lazySchema(() =&gt; z.object({
+  stdout: z.string(),
+  stderr: z.string(),
+  interrupted: z.boolean(),
+  backgroundTaskId: z.string().optional(),
+  persistedOutputPath: z.string().optional(), // 输出过大时持久化到磁盘
+  persistedOutputSize: z.number().optional(),
+  // ...
+}));
+</code></pre>
 
 <p><code>persistedOutputPath</code> 是一个重要的性能优化——当命令输出过大时，实际内容被写入临时文件，模型只收到文件路径和预览，避免撑爆上下文窗口。</p>
 <h2 id="39-filereadtool">3.9 典型工具解析：FileReadTool</h2>
 <p>FileReadTool 是一个典型的只读工具（<code>src/tools/FileReadTool/FileReadTool.ts</code>）。</p>
 <p>输入 Schema 设计（<code>src/tools/FileReadTool/FileReadTool.ts:227-243</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">inputSchema</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">lazySchema</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span>
-<span class="w">  </span><span class="nx">z</span><span class="p">.</span><span class="nx">strictObject</span><span class="p">({</span>
-<span class="w">    </span><span class="nx">file_path</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">().</span><span class="nx">describe</span><span class="p">(</span><span class="s1">&#39;The absolute path to the file to read&#39;</span><span class="p">),</span>
-<span class="w">    </span><span class="nx">offset</span><span class="o">:</span><span class="w"> </span><span class="kt">semanticNumber</span><span class="p">(</span><span class="nx">z</span><span class="p">.</span><span class="kt">number</span><span class="p">().</span><span class="kr">int</span><span class="p">().</span><span class="nx">nonnegative</span><span class="p">().</span><span class="nx">optional</span><span class="p">()),</span>
-<span class="w">    </span><span class="nx">limit</span><span class="o">:</span><span class="w"> </span><span class="kt">semanticNumber</span><span class="p">(</span><span class="nx">z</span><span class="p">.</span><span class="kt">number</span><span class="p">().</span><span class="kr">int</span><span class="p">().</span><span class="nx">positive</span><span class="p">().</span><span class="nx">optional</span><span class="p">()),</span>
-<span class="w">    </span><span class="nx">pages</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">().</span><span class="nx">optional</span><span class="p">(),</span><span class="w"> </span><span class="c1">// 仅 PDF 文件，如 &quot;1-5&quot;</span>
-<span class="w">  </span><span class="p">})</span>
-<span class="p">)</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">const inputSchema = lazySchema(() =&gt;
+  z.strictObject({
+    file_path: z.string().describe('The absolute path to the file to read'),
+    offset: semanticNumber(z.number().int().nonnegative().optional()),
+    limit: semanticNumber(z.number().int().positive().optional()),
+    pages: z.string().optional(), // 仅 PDF 文件，如 &quot;1-5&quot;
+  })
+)
+</code></pre>
 
 <p>FileReadTool 的安全设计体现在两处：</p>
 <ol>
@@ -393,56 +393,57 @@
 <h2 id="310-agenttool">3.10 典型工具解析：AgentTool</h2>
 <p>AgentTool 是工具系统中最复杂的一个，它能够产生子代理（<code>src/tools/AgentTool/AgentTool.tsx</code>）。</p>
 <p>输入 Schema 具有三层结构（<code>src/tools/AgentTool/AgentTool.tsx:82-102</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// 基础层：所有代理共有</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">baseInputSchema</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">lazySchema</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">z</span><span class="p">.</span><span class="nx">object</span><span class="p">({</span>
-<span class="w">  </span><span class="nx">description</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">(),</span><span class="w">     </span><span class="c1">// 任务的3-5词描述</span>
-<span class="w">  </span><span class="nx">prompt</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">(),</span><span class="w">          </span><span class="c1">// 代理要执行的任务</span>
-<span class="w">  </span><span class="nx">subagent_type</span><span class="o">:</span><span class="w"> </span><span class="kt">z.string</span><span class="p">().</span><span class="nx">optional</span><span class="p">(),</span>
-<span class="w">  </span><span class="nx">model</span><span class="o">:</span><span class="w"> </span><span class="kt">z.enum</span><span class="p">([</span><span class="s1">&#39;sonnet&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;opus&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;haiku&#39;</span><span class="p">]).</span><span class="nx">optional</span><span class="p">(),</span>
-<span class="w">  </span><span class="nx">run_in_background</span><span class="o">:</span><span class="w"> </span><span class="kt">z.boolean</span><span class="p">().</span><span class="nx">optional</span><span class="p">(),</span>
-<span class="p">}));</span>
+<pre class="codehilite"><code class="language-typescript">// 基础层：所有代理共有
+const baseInputSchema = lazySchema(() =&gt; z.object({
+  description: z.string(),     // 任务的3-5词描述
+  prompt: z.string(),          // 代理要执行的任务
+  subagent_type: z.string().optional(),
+  model: z.enum(['sonnet', 'opus', 'haiku']).optional(),
+  run_in_background: z.boolean().optional(),
+}));
 
-<span class="c1">// 扩展层：多代理参数（团队功能）</span>
-<span class="c1">// 通过 .merge() 组合，支持 name, team_name, mode 字段</span>
+// 扩展层：多代理参数（团队功能）
+// 通过 .merge() 组合，支持 name, team_name, mode 字段
 
-<span class="c1">// 隔离层：worktree / remote 隔离模式</span>
-<span class="c1">// 通过 .extend() 添加 isolation 和 cwd 字段</span>
-</code></pre></div>
+// 隔离层：worktree / remote 隔离模式
+// 通过 .extend() 添加 isolation 和 cwd 字段
+</code></pre>
 
 <p>AgentTool 使用 <code>bun:bundle</code> 的特性标志控制 <code>KAIROS</code> 模式下是否暴露 <code>cwd</code> 参数（<code>src/tools/AgentTool/AgentTool.tsx:111-113</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">schema</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">feature</span><span class="p">(</span><span class="s1">&#39;KAIROS&#39;</span><span class="p">)</span>
-<span class="w">  </span><span class="o">?</span><span class="w"> </span><span class="nx">fullInputSchema</span><span class="p">()</span>
-<span class="w">  </span><span class="o">:</span><span class="w"> </span><span class="nx">fullInputSchema</span><span class="p">().</span><span class="nx">omit</span><span class="p">({</span><span class="w"> </span><span class="nx">cwd</span><span class="o">:</span><span class="w"> </span><span class="kt">true</span><span class="w"> </span><span class="p">});</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">const schema = feature('KAIROS')
+  ? fullInputSchema()
+  : fullInputSchema().omit({ cwd: true });
+</code></pre>
 
 <p>AgentTool 同样使用 <code>feature()</code> 来条件加载重量级的 <code>proactive</code> 模块：</p>
-<div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">proactiveModule</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">feature</span><span class="p">(</span><span class="s1">&#39;PROACTIVE&#39;</span><span class="p">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">feature</span><span class="p">(</span><span class="s1">&#39;KAIROS&#39;</span><span class="p">)</span>
-<span class="w">  </span><span class="o">?</span><span class="w"> </span><span class="nx">require</span><span class="p">(</span><span class="s1">&#39;../../proactive/index.js&#39;</span><span class="p">)</span>
-<span class="w">  </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">const proactiveModule = feature('PROACTIVE') || feature('KAIROS')
+  ? require('../../proactive/index.js')
+  : null;
+</code></pre>
 
 <h2 id="311">3.11 工具执行生命周期</h2>
-<div class="codehilite"><pre><span></span><code><span class="n">flowchart</span><span class="w"> </span><span class="n">TD</span>
-<span class="w">    </span><span class="n">A</span><span class="o">[</span><span class="n">模型输出 tool_use 块</span><span class="o">]</span><span class="w"> </span><span class="c1">--&gt; B[反序列化 JSON 输入]</span>
-<span class="w">    </span><span class="n">B</span><span class="w"> </span><span class="c1">--&gt; C{Zod Schema 验证}</span>
-<span class="w">    </span><span class="n">C</span><span class="w"> </span><span class="c1">-- 验证失败 --&gt; D[返回错误给模型]</span>
-<span class="w">    </span><span class="n">C</span><span class="w"> </span><span class="c1">-- 验证通过 --&gt; E[调用 validateInput?]</span>
-<span class="w">    </span><span class="n">E</span><span class="w"> </span><span class="c1">-- 验证失败 --&gt; D</span>
-<span class="w">    </span><span class="n">E</span><span class="w"> </span><span class="c1">-- 验证通过 --&gt; F[调用 checkPermissions]</span>
-<span class="w">    </span><span class="n">F</span><span class="w"> </span><span class="c1">-- 拒绝 --&gt; G{交互模式?}</span>
-<span class="w">    </span><span class="n">G</span><span class="w"> </span><span class="c1">-- 是 --&gt; H[弹出权限对话框]</span>
-<span class="w">    </span><span class="n">H</span><span class="w"> </span><span class="c1">-- 用户拒绝 --&gt; I[renderToolUseRejectedMessage]</span>
-<span class="w">    </span><span class="n">H</span><span class="w"> </span><span class="c1">-- 用户允许 --&gt; J[调用 tool.call]</span>
-<span class="w">    </span><span class="n">G</span><span class="w"> </span><span class="c1">-- 否 --&gt; I</span>
-<span class="w">    </span><span class="n">F</span><span class="w"> </span><span class="c1">-- 允许 --&gt; J</span>
-<span class="w">    </span><span class="n">J</span><span class="w"> </span><span class="c1">--&gt; K{onProgress 回调}</span>
-<span class="w">    </span><span class="n">K</span><span class="w"> </span><span class="c1">-- 实时更新 --&gt; L[renderToolUseProgressMessage]</span>
-<span class="w">    </span><span class="n">J</span><span class="w"> </span><span class="c1">--&gt; M[返回 ToolResult]</span>
-<span class="w">    </span><span class="n">M</span><span class="w"> </span><span class="c1">--&gt; N[mapToolResultToToolResultBlockParam]</span>
-<span class="w">    </span><span class="n">N</span><span class="w"> </span><span class="c1">--&gt; O[发送给 Anthropic API]</span>
-<span class="w">    </span><span class="n">M</span><span class="w"> </span><span class="c1">--&gt; P[renderToolResultMessage]</span>
-<span class="w">    </span><span class="n">P</span><span class="w"> </span><span class="c1">--&gt; Q[在 REPL 中显示]</span>
-</code></pre></div>
+<div class="mermaid">
+flowchart TD
+    A[模型输出 tool_use 块] --> B[反序列化 JSON 输入]
+    B --> C{Zod Schema 验证}
+    C -- 验证失败 --> D[返回错误给模型]
+    C -- 验证通过 --> E[调用 validateInput?]
+    E -- 验证失败 --> D
+    E -- 验证通过 --> F[调用 checkPermissions]
+    F -- 拒绝 --> G{交互模式?}
+    G -- 是 --> H[弹出权限对话框]
+    H -- 用户拒绝 --> I[renderToolUseRejectedMessage]
+    H -- 用户允许 --> J[调用 tool.call]
+    G -- 否 --> I
+    F -- 允许 --> J
+    J --> K{onProgress 回调}
+    K -- 实时更新 --> L[renderToolUseProgressMessage]
+    J --> M[返回 ToolResult]
+    M --> N[mapToolResultToToolResultBlockParam]
+    N --> O[发送给 Anthropic API]
+    M --> P[renderToolResultMessage]
+    P --> Q[在 REPL 中显示]
+</div>
 
 <h2 id="312">3.12 工具分类体系</h2>
 <p>工具按照读写属性分为三类，这一分类直接影响权限模式下的行为：</p>
@@ -483,13 +484,13 @@
 <p><code>isDestructive</code> 的实现是<strong>基于输入的动态判断</strong>，而非静态属性。BashTool 会解析命令内容，FileWriteTool 会检查目标路径是否已存在。这种设计使权限系统能够在同一个工具的不同操作间做出差异化决策。</p>
 <h2 id="313">3.13 工具搜索与延迟加载</h2>
 <p><code>Tool</code> 接口包含两个控制工具可见性的字段（<code>src/Tool.ts:438-449</code>）：</p>
-<div class="codehilite"><pre><span></span><code><span class="k">readonly</span><span class="w"> </span><span class="nx">shouldDefer?</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="w">  </span><span class="c1">// true = 需要先 ToolSearch，才能调用</span>
-<span class="k">readonly</span><span class="w"> </span><span class="nx">alwaysLoad?</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="w">   </span><span class="c1">// true = 永远在初始提示中出现，不被延迟</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">readonly shouldDefer?: boolean  // true = 需要先 ToolSearch，才能调用
+readonly alwaysLoad?: boolean   // true = 永远在初始提示中出现，不被延迟
+</code></pre>
 
 <p>当 <code>shouldDefer: true</code> 时，工具的完整 Schema 不会出现在初始系统提示中，只有工具名称和 <code>searchHint</code> 字段会被发送。模型需要先调用 <code>ToolSearch</code> 工具获取完整 Schema，再发起实际调用。这一机制减少了系统提示的 token 消耗，对于拥有大量 MCP 工具的场景尤为关键。</p>
-<div class="codehilite"><pre><span></span><code><span class="nx">searchHint?</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w">  </span><span class="c1">// 3-10 词的关键词描述，用于 ToolSearch 的关键词匹配</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">searchHint?: string  // 3-10 词的关键词描述，用于 ToolSearch 的关键词匹配
+</code></pre>
 
 <p>这构成了一个三级工具发现体系：
 1. <strong>始终加载</strong>（<code>alwaysLoad: true</code>）：核心工具（Bash、Read、Edit 等）

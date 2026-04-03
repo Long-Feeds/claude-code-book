@@ -206,30 +206,30 @@
 </table>
 <p>这不是一个小型工具的代码量。相比之下，许多知名开源项目的核心代码库也不过如此规模。这个数字揭示了 Claude Code 背后的工程投入：它是一个功能完整、经过生产验证的商业软件产品。</p>
 <p>顶层目录结构如下：</p>
-<div class="codehilite"><pre><span></span><code><span class="n">src</span><span class="o">/</span>
-<span class="err">├──</span><span class="w"> </span><span class="n">main</span><span class="o">.</span><span class="n">tsx</span><span class="w">          </span><span class="c1"># 入口（Commander.js CLI 解析 + React/Ink 渲染器初始化）</span>
-<span class="err">├──</span><span class="w"> </span><span class="n">QueryEngine</span><span class="o">.</span><span class="n">ts</span><span class="w">    </span><span class="c1"># LLM 查询引擎（核心 API 调用层）</span>
-<span class="err">├──</span><span class="w"> </span><span class="n">Tool</span><span class="o">.</span><span class="n">ts</span><span class="w">           </span><span class="c1"># 工具类型定义基础</span>
-<span class="err">├──</span><span class="w"> </span><span class="n">commands</span><span class="o">.</span><span class="n">ts</span><span class="w">       </span><span class="c1"># 斜杠命令注册表</span>
-<span class="err">├──</span><span class="w"> </span><span class="n">tools</span><span class="o">.</span><span class="n">ts</span><span class="w">          </span><span class="c1"># 工具注册表</span>
-<span class="err">├──</span><span class="w"> </span><span class="n">context</span><span class="o">.</span><span class="n">ts</span><span class="w">        </span><span class="c1"># 系统与用户上下文收集</span>
-<span class="err">├──</span><span class="w"> </span><span class="n">cost</span><span class="o">-</span><span class="n">tracker</span><span class="o">.</span><span class="n">ts</span><span class="w">   </span><span class="c1"># Token 费用追踪</span>
-<span class="err">│</span>
-<span class="err">├──</span><span class="w"> </span><span class="n">commands</span><span class="o">/</span><span class="w">         </span><span class="c1"># 斜杠命令实现（约 50 个）</span>
-<span class="err">├──</span><span class="w"> </span><span class="n">tools</span><span class="o">/</span><span class="w">            </span><span class="c1"># Agent 工具实现（约 40 个）</span>
-<span class="err">├──</span><span class="w"> </span><span class="n">components</span><span class="o">/</span><span class="w">       </span><span class="c1"># Ink UI 组件（约 140 个）</span>
-<span class="err">├──</span><span class="w"> </span><span class="n">hooks</span><span class="o">/</span><span class="w">            </span><span class="c1"># React Hooks</span>
-<span class="err">├──</span><span class="w"> </span><span class="n">services</span><span class="o">/</span><span class="w">         </span><span class="c1"># 外部服务集成</span>
-<span class="err">├──</span><span class="w"> </span><span class="n">screens</span><span class="o">/</span><span class="w">          </span><span class="c1"># 全屏 UI（Doctor、REPL、Resume）</span>
-<span class="err">├──</span><span class="w"> </span><span class="n">bridge</span><span class="o">/</span><span class="w">           </span><span class="c1"># IDE 集成桥接层</span>
-<span class="err">├──</span><span class="w"> </span><span class="n">coordinator</span><span class="o">/</span><span class="w">      </span><span class="c1"># 多 Agent 协调器</span>
-<span class="err">├──</span><span class="w"> </span><span class="n">plugins</span><span class="o">/</span><span class="w">          </span><span class="c1"># 插件系统</span>
-<span class="err">├──</span><span class="w"> </span><span class="n">skills</span><span class="o">/</span><span class="w">           </span><span class="c1"># 技能系统</span>
-<span class="err">├──</span><span class="w"> </span><span class="n">state</span><span class="o">/</span><span class="w">            </span><span class="c1"># 状态管理</span>
-<span class="err">├──</span><span class="w"> </span><span class="n">memdir</span><span class="o">/</span><span class="w">           </span><span class="c1"># 持久化记忆目录</span>
-<span class="err">├──</span><span class="w"> </span><span class="n">tasks</span><span class="o">/</span><span class="w">            </span><span class="c1"># 任务管理</span>
-<span class="err">└──</span><span class="w"> </span><span class="o">...</span><span class="w">               </span><span class="c1"># 其他子系统</span>
-</code></pre></div>
+<pre class="codehilite"><code>src/
+├── main.tsx          # 入口（Commander.js CLI 解析 + React/Ink 渲染器初始化）
+├── QueryEngine.ts    # LLM 查询引擎（核心 API 调用层）
+├── Tool.ts           # 工具类型定义基础
+├── commands.ts       # 斜杠命令注册表
+├── tools.ts          # 工具注册表
+├── context.ts        # 系统与用户上下文收集
+├── cost-tracker.ts   # Token 费用追踪
+│
+├── commands/         # 斜杠命令实现（约 50 个）
+├── tools/            # Agent 工具实现（约 40 个）
+├── components/       # Ink UI 组件（约 140 个）
+├── hooks/            # React Hooks
+├── services/         # 外部服务集成
+├── screens/          # 全屏 UI（Doctor、REPL、Resume）
+├── bridge/           # IDE 集成桥接层
+├── coordinator/      # 多 Agent 协调器
+├── plugins/          # 插件系统
+├── skills/           # 技能系统
+├── state/            # 状态管理
+├── memdir/           # 持久化记忆目录
+├── tasks/            # 任务管理
+└── ...               # 其他子系统
+</code></pre>
 
 <hr />
 <h2 id="_4">技术栈一览</h2>
@@ -312,8 +312,8 @@
 <h2 id="_6">阅读说明</h2>
 <p>本书所有代码引用均来自泄露的源码，文件路径以 <code>src/</code> 为根。行号基于原始文件，可能因后续版本变化而偏移。</p>
 <p>代码块中的文件路径格式为：</p>
-<div class="codehilite"><pre><span></span><code>src/文件路径:行号
-</code></pre></div>
+<pre class="codehilite"><code>src/文件路径:行号
+</code></pre>
 
 <p>所有内容均以分析和教育为目的。原始源码版权归 Anthropic 所有。</p>
 <hr />

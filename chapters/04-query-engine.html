@@ -152,171 +152,172 @@
 <hr />
 <h2 id="41-queryengineconfig">4.1 QueryEngineConfig：查询引擎的配置清单</h2>
 <p><code>QueryEngine</code> 类在 <code>src/QueryEngine.ts</code> 第 130–173 行定义了一个名为 <code>QueryEngineConfig</code> 的类型，它是整个引擎的"出厂设定"，涵盖运行时所需的全部依赖与参数：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/QueryEngine.ts:130</span>
-<span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">QueryEngineConfig</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="nx">cwd</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w">                        </span><span class="c1">// 工作目录</span>
-<span class="w">  </span><span class="nx">tools</span><span class="o">:</span><span class="w"> </span><span class="kt">Tools</span><span class="w">                       </span><span class="c1">// 可用工具集</span>
-<span class="w">  </span><span class="nx">commands</span><span class="o">:</span><span class="w"> </span><span class="kt">Command</span><span class="p">[]</span><span class="w">                </span><span class="c1">// 斜杠命令列表</span>
-<span class="w">  </span><span class="nx">mcpClients</span><span class="o">:</span><span class="w"> </span><span class="kt">MCPServerConnection</span><span class="p">[]</span><span class="w">  </span><span class="c1">// MCP 服务器连接</span>
-<span class="w">  </span><span class="nx">agents</span><span class="o">:</span><span class="w"> </span><span class="kt">AgentDefinition</span><span class="p">[]</span><span class="w">          </span><span class="c1">// 子 Agent 定义</span>
-<span class="w">  </span><span class="nx">canUseTool</span><span class="o">:</span><span class="w"> </span><span class="kt">CanUseToolFn</span><span class="w">           </span><span class="c1">// 权限检查回调</span>
-<span class="w">  </span><span class="nx">getAppState</span><span class="o">:</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">AppState</span><span class="w">        </span><span class="c1">// 读取全局状态</span>
-<span class="w">  </span><span class="nx">setAppState</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="nx">f</span><span class="o">:</span><span class="w"> </span><span class="kt">...</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="ow">void</span><span class="w">      </span><span class="c1">// 更新全局状态</span>
-<span class="w">  </span><span class="nx">initialMessages?</span><span class="o">:</span><span class="w"> </span><span class="kt">Message</span><span class="p">[]</span><span class="w">        </span><span class="c1">// 初始消息历史</span>
-<span class="w">  </span><span class="nx">readFileCache</span><span class="o">:</span><span class="w"> </span><span class="kt">FileStateCache</span><span class="w">      </span><span class="c1">// 文件状态缓存</span>
-<span class="w">  </span><span class="nx">customSystemPrompt?</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w">        </span><span class="c1">// 自定义系统提示</span>
-<span class="w">  </span><span class="nx">appendSystemPrompt?</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w">        </span><span class="c1">// 追加系统提示</span>
-<span class="w">  </span><span class="nx">userSpecifiedModel?</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w">        </span><span class="c1">// 用户指定模型</span>
-<span class="w">  </span><span class="nx">fallbackModel?</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w">             </span><span class="c1">// 降级备用模型</span>
-<span class="w">  </span><span class="nx">thinkingConfig?</span><span class="o">:</span><span class="w"> </span><span class="kt">ThinkingConfig</span><span class="w">    </span><span class="c1">// 思考模式配置</span>
-<span class="w">  </span><span class="nx">maxTurns?</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w">                  </span><span class="c1">// 最大轮次限制</span>
-<span class="w">  </span><span class="nx">maxBudgetUsd?</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w">              </span><span class="c1">// 最大花费上限（USD）</span>
-<span class="w">  </span><span class="nx">taskBudget</span><span class="o">?:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">total</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="p">}</span><span class="w">     </span><span class="c1">// API 任务预算</span>
-<span class="w">  </span><span class="nx">jsonSchema?</span><span class="o">:</span><span class="w"> </span><span class="kt">Record</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">unknown</span><span class="o">&gt;</span><span class="w"> </span><span class="c1">// 结构化输出 Schema</span>
-<span class="w">  </span><span class="nx">verbose?</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="w">                  </span><span class="c1">// 详细日志</span>
-<span class="w">  </span><span class="nx">replayUserMessages?</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="w">       </span><span class="c1">// SDK 消息回放</span>
-<span class="w">  </span><span class="nx">handleElicitation?</span><span class="o">:</span><span class="w"> </span><span class="kt">...</span><span class="w">            </span><span class="c1">// MCP URL 询问处理器</span>
-<span class="w">  </span><span class="nx">includePartialMessages?</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="w">   </span><span class="c1">// 包含部分消息</span>
-<span class="w">  </span><span class="nx">setSDKStatus</span><span class="o">?:</span><span class="w"> </span><span class="p">(</span><span class="nx">status</span><span class="o">:</span><span class="w"> </span><span class="kt">SDKStatus</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="ow">void</span><span class="w">  </span><span class="c1">// SDK 状态回调</span>
-<span class="w">  </span><span class="nx">abortController?</span><span class="o">:</span><span class="w"> </span><span class="kt">AbortController</span><span class="w">  </span><span class="c1">// 外部中断控制器</span>
-<span class="w">  </span><span class="nx">orphanedPermission?</span><span class="o">:</span><span class="w"> </span><span class="kt">OrphanedPermission</span><span class="w">     </span><span class="c1">// 遗留权限处理</span>
-<span class="w">  </span><span class="nx">snipReplay</span><span class="o">?:</span><span class="w"> </span><span class="p">(...)</span><span class="w">                 </span><span class="c1">// 历史片段回放钩子</span>
-<span class="p">}</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// src/QueryEngine.ts:130
+export type QueryEngineConfig = {
+  cwd: string                        // 工作目录
+  tools: Tools                       // 可用工具集
+  commands: Command[]                // 斜杠命令列表
+  mcpClients: MCPServerConnection[]  // MCP 服务器连接
+  agents: AgentDefinition[]          // 子 Agent 定义
+  canUseTool: CanUseToolFn           // 权限检查回调
+  getAppState: () =&gt; AppState        // 读取全局状态
+  setAppState: (f: ...) =&gt; void      // 更新全局状态
+  initialMessages?: Message[]        // 初始消息历史
+  readFileCache: FileStateCache      // 文件状态缓存
+  customSystemPrompt?: string        // 自定义系统提示
+  appendSystemPrompt?: string        // 追加系统提示
+  userSpecifiedModel?: string        // 用户指定模型
+  fallbackModel?: string             // 降级备用模型
+  thinkingConfig?: ThinkingConfig    // 思考模式配置
+  maxTurns?: number                  // 最大轮次限制
+  maxBudgetUsd?: number              // 最大花费上限（USD）
+  taskBudget?: { total: number }     // API 任务预算
+  jsonSchema?: Record&lt;string, unknown&gt; // 结构化输出 Schema
+  verbose?: boolean                  // 详细日志
+  replayUserMessages?: boolean       // SDK 消息回放
+  handleElicitation?: ...            // MCP URL 询问处理器
+  includePartialMessages?: boolean   // 包含部分消息
+  setSDKStatus?: (status: SDKStatus) =&gt; void  // SDK 状态回调
+  abortController?: AbortController  // 外部中断控制器
+  orphanedPermission?: OrphanedPermission     // 遗留权限处理
+  snipReplay?: (...)                 // 历史片段回放钩子
+}
+</code></pre>
 
 <p>这个配置类型的设计体现了一个重要原则：<strong>QueryEngine 是无状态依赖的</strong>。它通过 <code>getAppState</code>/<code>setAppState</code> 访问全局状态，通过 <code>canUseTool</code> 委托权限决策，通过 <code>tools</code> 注入工具集——所有外部依赖都以参数形式传入，使得 QueryEngine 本身易于测试和复用。</p>
 <hr />
 <h2 id="42-queryengine">4.2 QueryEngine 类：会话的状态管理者</h2>
 <p><code>QueryEngine</code> 类（<code>src/QueryEngine.ts:184</code>）是整个会话生命周期的拥有者。它的私有字段揭示了跨轮次需要持久化的核心状态：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/QueryEngine.ts:184</span>
-<span class="k">export</span><span class="w"> </span><span class="kd">class</span><span class="w"> </span><span class="nx">QueryEngine</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">config</span><span class="o">:</span><span class="w"> </span><span class="kt">QueryEngineConfig</span>
-<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">mutableMessages</span><span class="o">:</span><span class="w"> </span><span class="kt">Message</span><span class="p">[]</span><span class="w">          </span><span class="c1">// 消息历史（可变）</span>
-<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">abortController</span><span class="o">:</span><span class="w"> </span><span class="kt">AbortController</span><span class="w">    </span><span class="c1">// 中断控制器</span>
-<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">permissionDenials</span><span class="o">:</span><span class="w"> </span><span class="kt">SDKPermissionDenial</span><span class="p">[]</span><span class="w">  </span><span class="c1">// 权限拒绝记录</span>
-<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">totalUsage</span><span class="o">:</span><span class="w"> </span><span class="kt">NonNullableUsage</span><span class="w">        </span><span class="c1">// 累计 token 用量</span>
-<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">hasHandledOrphanedPermission</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span>
-<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">discoveredSkillNames</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nb">Set</span><span class="o">&lt;</span><span class="kt">string</span><span class="o">&gt;</span><span class="p">()</span><span class="w">  </span><span class="c1">// 已发现的技能</span>
-<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">loadedNestedMemoryPaths</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nb">Set</span><span class="o">&lt;</span><span class="kt">string</span><span class="o">&gt;</span><span class="p">()</span><span class="w"> </span><span class="c1">// 已加载记忆路径</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// src/QueryEngine.ts:184
+export class QueryEngine {
+  private config: QueryEngineConfig
+  private mutableMessages: Message[]          // 消息历史（可变）
+  private abortController: AbortController    // 中断控制器
+  private permissionDenials: SDKPermissionDenial[]  // 权限拒绝记录
+  private totalUsage: NonNullableUsage        // 累计 token 用量
+  private hasHandledOrphanedPermission = false
+  private discoveredSkillNames = new Set&lt;string&gt;()  // 已发现的技能
+  private loadedNestedMemoryPaths = new Set&lt;string&gt;() // 已加载记忆路径
+</code></pre>
 
 <p>构造函数（第 200–207 行）只做简单初始化：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/QueryEngine.ts:200</span>
-<span class="kr">constructor</span><span class="p">(</span><span class="nx">config</span><span class="o">:</span><span class="w"> </span><span class="kt">QueryEngineConfig</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="k">this</span><span class="p">.</span><span class="nx">config</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">config</span>
-<span class="w">  </span><span class="k">this</span><span class="p">.</span><span class="nx">mutableMessages</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">config</span><span class="p">.</span><span class="nx">initialMessages</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="p">[]</span>
-<span class="w">  </span><span class="k">this</span><span class="p">.</span><span class="nx">abortController</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">config</span><span class="p">.</span><span class="nx">abortController</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="nx">createAbortController</span><span class="p">()</span>
-<span class="w">  </span><span class="k">this</span><span class="p">.</span><span class="nx">permissionDenials</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[]</span>
-<span class="w">  </span><span class="k">this</span><span class="p">.</span><span class="nx">readFileState</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">config</span><span class="p">.</span><span class="nx">readFileCache</span>
-<span class="w">  </span><span class="k">this</span><span class="p">.</span><span class="nx">totalUsage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">EMPTY_USAGE</span>
-<span class="p">}</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// src/QueryEngine.ts:200
+constructor(config: QueryEngineConfig) {
+  this.config = config
+  this.mutableMessages = config.initialMessages ?? []
+  this.abortController = config.abortController ?? createAbortController()
+  this.permissionDenials = []
+  this.readFileState = config.readFileCache
+  this.totalUsage = EMPTY_USAGE
+}
+</code></pre>
 
 <p>关键设计点：<code>discoveredSkillNames</code> 在每次 <code>submitMessage()</code> 开头被清空（第 238 行），避免跨轮次的技能发现记录无限增长；而 <code>loadedNestedMemoryPaths</code> 则在整个引擎生命周期内持续积累，保证嵌套记忆文件不会被重复加载。</p>
 <hr />
 <h2 id="43-submitmessage">4.3 submitMessage()：一切从这里开始</h2>
 <p><code>submitMessage()</code> 是 <code>QueryEngine</code> 对外暴露的核心方法，签名为：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/QueryEngine.ts:209</span>
-<span class="k">async</span><span class="w"> </span><span class="o">*</span><span class="nx">submitMessage</span><span class="p">(</span>
-<span class="w">  </span><span class="nx">prompt</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nx">ContentBlockParam</span><span class="p">[],</span>
-<span class="w">  </span><span class="nx">options</span><span class="o">?:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">uuid?</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span><span class="w"> </span><span class="nx">isMeta?</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="w"> </span><span class="p">},</span>
-<span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">AsyncGenerator</span><span class="o">&lt;</span><span class="nx">SDKMessage</span><span class="p">,</span><span class="w"> </span><span class="ow">void</span><span class="p">,</span><span class="w"> </span><span class="nx">unknown</span><span class="o">&gt;</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// src/QueryEngine.ts:209
+async *submitMessage(
+  prompt: string | ContentBlockParam[],
+  options?: { uuid?: string; isMeta?: boolean },
+): AsyncGenerator&lt;SDKMessage, void, unknown&gt;
+</code></pre>
 
 <p>它是一个<strong>异步生成器</strong>（<code>async *</code>），调用方通过 <code>for await ... of</code> 逐条接收 <code>SDKMessage</code>。这种设计允许引擎在处理过程中实时流式输出，而不必等到整个响应完成。</p>
 <p><code>submitMessage()</code> 的执行流程可分为以下阶段：</p>
 <h3 id="_1">阶段一：初始化与系统提示构建</h3>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/QueryEngine.ts:284-325</span>
-<span class="nx">headlessProfilerCheckpoint</span><span class="p">(</span><span class="s1">&#39;before_getSystemPrompt&#39;</span><span class="p">)</span>
-<span class="kd">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">defaultSystemPrompt</span><span class="p">,</span><span class="w"> </span><span class="nx">userContext</span><span class="p">,</span><span class="w"> </span><span class="nx">systemContext</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">=</span>
-<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">fetchSystemPromptParts</span><span class="p">({</span><span class="w"> </span><span class="nx">tools</span><span class="p">,</span><span class="w"> </span><span class="nx">mainLoopModel</span><span class="p">,</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">})</span>
+<pre class="codehilite"><code class="language-typescript">// src/QueryEngine.ts:284-325
+headlessProfilerCheckpoint('before_getSystemPrompt')
+const { defaultSystemPrompt, userContext, systemContext } =
+  await fetchSystemPromptParts({ tools, mainLoopModel, ... })
 
-<span class="kd">const</span><span class="w"> </span><span class="nx">systemPrompt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">asSystemPrompt</span><span class="p">([</span>
-<span class="w">  </span><span class="p">...(</span><span class="nx">customPrompt</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="kc">undefined</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">[</span><span class="nx">customPrompt</span><span class="p">]</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="nx">defaultSystemPrompt</span><span class="p">),</span>
-<span class="w">  </span><span class="p">...(</span><span class="nx">memoryMechanicsPrompt</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">[</span><span class="nx">memoryMechanicsPrompt</span><span class="p">]</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="p">[]),</span>
-<span class="w">  </span><span class="p">...(</span><span class="nx">appendSystemPrompt</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">[</span><span class="nx">appendSystemPrompt</span><span class="p">]</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="p">[]),</span>
-<span class="p">])</span>
-</code></pre></div>
+const systemPrompt = asSystemPrompt([
+  ...(customPrompt !== undefined ? [customPrompt] : defaultSystemPrompt),
+  ...(memoryMechanicsPrompt ? [memoryMechanicsPrompt] : []),
+  ...(appendSystemPrompt ? [appendSystemPrompt] : []),
+])
+</code></pre>
 
 <p>系统提示由三部分拼接而成：自定义提示（或默认提示）、记忆机制提示（当 <code>CLAUDE_COWORK_MEMORY_PATH_OVERRIDE</code> 环境变量激活时）、以及追加提示。</p>
 <h3 id="_2">阶段二：加载技能与插件</h3>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/QueryEngine.ts:534-551</span>
-<span class="kd">const</span><span class="w"> </span><span class="p">[</span><span class="nx">skills</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">enabled</span><span class="o">:</span><span class="w"> </span><span class="kt">enabledPlugins</span><span class="w"> </span><span class="p">}]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nb">Promise</span><span class="p">.</span><span class="nx">all</span><span class="p">([</span>
-<span class="w">  </span><span class="nx">getSlashCommandToolSkills</span><span class="p">(</span><span class="nx">getCwd</span><span class="p">()),</span>
-<span class="w">  </span><span class="nx">loadAllPluginsCacheOnly</span><span class="p">(),</span>
-<span class="p">])</span>
+<pre class="codehilite"><code class="language-typescript">// src/QueryEngine.ts:534-551
+const [skills, { enabled: enabledPlugins }] = await Promise.all([
+  getSlashCommandToolSkills(getCwd()),
+  loadAllPluginsCacheOnly(),
+])
 
-<span class="k">yield</span><span class="w"> </span><span class="nx">buildSystemInitMessage</span><span class="p">({</span>
-<span class="w">  </span><span class="nx">tools</span><span class="p">,</span><span class="w"> </span><span class="nx">mcpClients</span><span class="p">,</span><span class="w"> </span><span class="nx">model</span><span class="o">:</span><span class="w"> </span><span class="kt">mainLoopModel</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">permissionMode</span><span class="p">,</span><span class="w"> </span><span class="nx">commands</span><span class="p">,</span><span class="w"> </span><span class="nx">agents</span><span class="p">,</span><span class="w"> </span><span class="nx">skills</span><span class="p">,</span><span class="w"> </span><span class="nx">plugins</span><span class="o">:</span><span class="w"> </span><span class="kt">enabledPlugins</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">fastMode</span><span class="o">:</span><span class="w"> </span><span class="kt">initialAppState.fastMode</span><span class="p">,</span>
-<span class="p">})</span>
-</code></pre></div>
+yield buildSystemInitMessage({
+  tools, mcpClients, model: mainLoopModel,
+  permissionMode, commands, agents, skills, plugins: enabledPlugins,
+  fastMode: initialAppState.fastMode,
+})
+</code></pre>
 
 <p>技能（Skills）来自当前工作目录下的斜杠命令工具；插件（Plugins）仅从缓存加载（<code>CacheOnly</code>），避免在每次请求时触发网络操作。加载完成后立即向调用方 <code>yield</code> 一个系统初始化消息。</p>
 <h3 id="_3">阶段三：处理用户输入</h3>
 <p>通过 <code>processUserInput()</code> 处理斜杠命令、消息附件等，得到最终要进入 LLM 的消息数组。若输入触发了本地斜杠命令（如 <code>/help</code>），<code>shouldQuery</code> 为 <code>false</code>，引擎直接返回命令结果，不调用 API。</p>
 <h3 id="query">阶段四：调用 query() 并转发消息流</h3>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/QueryEngine.ts:675</span>
-<span class="k">for</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">message</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="nx">query</span><span class="p">({</span>
-<span class="w">  </span><span class="nx">messages</span><span class="p">,</span><span class="w"> </span><span class="nx">systemPrompt</span><span class="p">,</span><span class="w"> </span><span class="nx">userContext</span><span class="p">,</span><span class="w"> </span><span class="nx">systemContext</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">canUseTool</span><span class="o">:</span><span class="w"> </span><span class="kt">wrappedCanUseTool</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">toolUseContext</span><span class="o">:</span><span class="w"> </span><span class="kt">processUserInputContext</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">fallbackModel</span><span class="p">,</span><span class="w"> </span><span class="nx">querySource</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;sdk&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">maxTurns</span><span class="p">,</span><span class="w"> </span><span class="nx">taskBudget</span><span class="p">,</span>
-<span class="p">}))</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="c1">// 记录 assistant/user 消息到历史与转录</span>
-<span class="w">  </span><span class="c1">// 更新 token 用量</span>
-<span class="w">  </span><span class="c1">// 向调用方转发消息</span>
-<span class="p">}</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// src/QueryEngine.ts:675
+for await (const message of query({
+  messages, systemPrompt, userContext, systemContext,
+  canUseTool: wrappedCanUseTool,
+  toolUseContext: processUserInputContext,
+  fallbackModel, querySource: 'sdk', maxTurns, taskBudget,
+})) {
+  // 记录 assistant/user 消息到历史与转录
+  // 更新 token 用量
+  // 向调用方转发消息
+}
+</code></pre>
 
 <p><code>wrappedCanUseTool</code>（第 244–271 行）是对原始 <code>canUseTool</code> 的包装，额外追踪每次权限拒绝事件，最终记录在 <code>permissionDenials</code> 数组中，供 SDK 结果消息使用。</p>
 <hr />
 <h2 id="44-queryparams-state">4.4 QueryParams 与 State：查询循环的骨架</h2>
 <p>在 <code>src/query.ts</code> 中，<code>query()</code> 函数接受 <code>QueryParams</code> 类型参数，进入 <code>queryLoop()</code> 后维护一个关键的可变状态对象 <code>State</code>：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/query.ts:204</span>
-<span class="kr">type</span><span class="w"> </span><span class="nx">State</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="nx">messages</span><span class="o">:</span><span class="w"> </span><span class="kt">Message</span><span class="p">[]</span><span class="w">                           </span><span class="c1">// 当前消息列表</span>
-<span class="w">  </span><span class="nx">toolUseContext</span><span class="o">:</span><span class="w"> </span><span class="kt">ToolUseContext</span><span class="w">                 </span><span class="c1">// 工具执行上下文</span>
-<span class="w">  </span><span class="nx">autoCompactTracking</span><span class="o">:</span><span class="w"> </span><span class="kt">AutoCompactTrackingState</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">undefined</span><span class="w">  </span><span class="c1">// 自动压缩追踪</span>
-<span class="w">  </span><span class="nx">maxOutputTokensRecoveryCount</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w">          </span><span class="c1">// max_output_tokens 恢复计数</span>
-<span class="w">  </span><span class="nx">hasAttemptedReactiveCompact</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="w">          </span><span class="c1">// 是否已尝试响应式压缩</span>
-<span class="w">  </span><span class="nx">maxOutputTokensOverride</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">undefined</span><span class="w">   </span><span class="c1">// token 上限覆盖值</span>
-<span class="w">  </span><span class="nx">pendingToolUseSummary</span><span class="o">:</span><span class="w"> </span><span class="kt">Promise</span><span class="o">&lt;</span><span class="p">...</span><span class="o">&gt;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">undefined</span><span class="w">  </span><span class="c1">// 待处理工具摘要</span>
-<span class="w">  </span><span class="nx">stopHookActive</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">undefined</span><span class="w">           </span><span class="c1">// 停止钩子是否激活</span>
-<span class="w">  </span><span class="nx">turnCount</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w">                             </span><span class="c1">// 当前轮次计数</span>
-<span class="w">  </span><span class="nx">transition</span><span class="o">:</span><span class="w"> </span><span class="kt">Continue</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">undefined</span><span class="w">              </span><span class="c1">// 上次迭代的继续原因</span>
-<span class="p">}</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// src/query.ts:204
+type State = {
+  messages: Message[]                           // 当前消息列表
+  toolUseContext: ToolUseContext                 // 工具执行上下文
+  autoCompactTracking: AutoCompactTrackingState | undefined  // 自动压缩追踪
+  maxOutputTokensRecoveryCount: number          // max_output_tokens 恢复计数
+  hasAttemptedReactiveCompact: boolean          // 是否已尝试响应式压缩
+  maxOutputTokensOverride: number | undefined   // token 上限覆盖值
+  pendingToolUseSummary: Promise&lt;...&gt; | undefined  // 待处理工具摘要
+  stopHookActive: boolean | undefined           // 停止钩子是否激活
+  turnCount: number                             // 当前轮次计数
+  transition: Continue | undefined              // 上次迭代的继续原因
+}
+</code></pre>
 
 <p><code>State</code> 是整个循环的"血液"——每次需要继续下一轮（因工具调用、恢复 token 限制、压缩等原因），都通过 <code>state = { ...newState }; continue</code> 进入下一次循环迭代，而不是递归调用。这是一个扁平化的状态机设计。</p>
 <hr />
 <h2 id="45-queryloop">4.5 queryLoop()：无限循环驱动的状态机</h2>
 <p><code>queryLoop()</code> 函数（<code>src/query.ts:241</code>）是整个 LLM 交互的核心引擎。它是一个 <code>while(true)</code> 循环，每次迭代代表一个完整的"模型调用 + 工具执行"周期：</p>
-<div class="codehilite"><pre><span></span><code><span class="n">flowchart</span><span class="w"> </span><span class="n">TD</span>
-<span class="w">    </span><span class="n">A</span><span class="p">[</span><span class="n">进入</span><span class="w"> </span><span class="n">queryLoop</span><span class="p">]</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">B</span><span class="p">[</span><span class="n">初始化</span><span class="w"> </span><span class="n">State</span><span class="p">]</span>
-<span class="w">    </span><span class="n">B</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">C</span><span class="p">{</span><span class="k">while</span><span class="w"> </span><span class="nb">true</span><span class="p">}</span>
-<span class="w">    </span><span class="n">C</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">D</span><span class="p">[</span><span class="n">应用</span><span class="w"> </span><span class="n">snip</span><span class="o">/</span><span class="n">microcompact</span><span class="o">/</span><span class="n">autocompact</span><span class="p">]</span>
-<span class="w">    </span><span class="n">D</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">E</span><span class="p">[</span><span class="n">检查</span><span class="w"> </span><span class="n">token</span><span class="w"> </span><span class="n">阻塞限制</span><span class="p">]</span>
-<span class="w">    </span><span class="n">E</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">F</span><span class="p">[</span><span class="n">调用</span><span class="w"> </span><span class="n">deps</span><span class="p">.</span><span class="n">callModel</span><span class="w"> </span><span class="n">流式获取响应</span><span class="p">]</span>
-<span class="w">    </span><span class="n">F</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">G</span><span class="p">{</span><span class="n">接收到</span><span class="w"> </span><span class="n">tool_use</span><span class="w"> </span><span class="n">块</span><span class="o">?</span><span class="p">}</span>
-<span class="w">    </span><span class="n">G</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">否</span><span class="o">|</span><span class="w"> </span><span class="n">H</span><span class="p">[</span><span class="n">needsFollowUp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">]</span>
-<span class="w">    </span><span class="n">G</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">是</span><span class="o">|</span><span class="w"> </span><span class="n">I</span><span class="p">[</span><span class="n">toolUseBlocks</span><span class="p">.</span><span class="n">push</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">needsFollowUp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">]</span>
-<span class="w">    </span><span class="n">I</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">F</span>
-<span class="w">    </span><span class="n">H</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">J</span><span class="p">{</span><span class="n">检查</span><span class="w"> </span><span class="n">max_output_tokens</span><span class="w"> </span><span class="n">错误</span><span class="o">?</span><span class="p">}</span>
-<span class="w">    </span><span class="n">J</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">是</span><span class="p">,</span><span class="w"> </span><span class="n">未超过恢复上限</span><span class="o">|</span><span class="w"> </span><span class="n">K</span><span class="p">[</span><span class="n">注入恢复消息</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="k">continue</span><span class="p">]</span>
-<span class="w">    </span><span class="n">J</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">是</span><span class="p">,</span><span class="w"> </span><span class="n">已超过上限</span><span class="o">|</span><span class="w"> </span><span class="n">L</span><span class="p">[</span><span class="n">surfacing</span><span class="w"> </span><span class="n">错误并退出</span><span class="p">]</span>
-<span class="w">    </span><span class="n">J</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">否</span><span class="o">|</span><span class="w"> </span><span class="n">M</span><span class="p">[</span><span class="n">执行停止钩子</span><span class="p">]</span>
-<span class="w">    </span><span class="n">M</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">N</span><span class="p">{</span><span class="n">停止钩子阻止继续</span><span class="o">?</span><span class="p">}</span>
-<span class="w">    </span><span class="n">N</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">是</span><span class="o">|</span><span class="w"> </span><span class="n">O</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">stop_hook_prevented</span><span class="p">]</span>
-<span class="w">    </span><span class="n">N</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">否</span><span class="o">|</span><span class="w"> </span><span class="n">P</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">completed</span><span class="p">]</span>
-<span class="w">    </span><span class="n">I</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">Q</span><span class="p">[</span><span class="n">执行工具调用</span><span class="w"> </span><span class="n">runTools</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">streamingToolExecutor</span><span class="p">]</span>
-<span class="w">    </span><span class="n">Q</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">R</span><span class="p">[</span><span class="n">收集</span><span class="w"> </span><span class="n">toolResults</span><span class="p">]</span>
-<span class="w">    </span><span class="n">R</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">S</span><span class="p">{</span><span class="n">被中断</span><span class="o">?</span><span class="p">}</span>
-<span class="w">    </span><span class="n">S</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">是</span><span class="o">|</span><span class="w"> </span><span class="n">T</span><span class="p">[</span><span class="k">return</span><span class="w"> </span><span class="n">aborted_tools</span><span class="p">]</span>
-<span class="w">    </span><span class="n">S</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">否</span><span class="o">|</span><span class="w"> </span><span class="n">U</span><span class="p">[</span><span class="n">构建下一轮</span><span class="w"> </span><span class="n">State</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="k">continue</span><span class="p">]</span>
-<span class="w">    </span><span class="n">U</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">C</span>
-</code></pre></div>
+<div class="mermaid">
+flowchart TD
+    A[进入 queryLoop] --> B[初始化 State]
+    B --> C{while true}
+    C --> D[应用 snip/microcompact/autocompact]
+    D --> E[检查 token 阻塞限制]
+    E --> F[调用 deps.callModel 流式获取响应]
+    F --> G{接收到 tool_use 块?}
+    G -->|否| H[needsFollowUp = false]
+    G -->|是| I[toolUseBlocks.push / needsFollowUp = true]
+    I --> F
+    H --> J{检查 max_output_tokens 错误?}
+    J -->|是, 未超过恢复上限| K[注入恢复消息 → continue]
+    J -->|是, 已超过上限| L[surfacing 错误并退出]
+    J -->|否| M[执行停止钩子]
+    M --> N{停止钩子阻止继续?}
+    N -->|是| O[return stop_hook_prevented]
+    N -->|否| P[return completed]
+    I --> Q[执行工具调用 runTools / streamingToolExecutor]
+    Q --> R[收集 toolResults]
+    R --> S{被中断?}
+    S -->|是| T[return aborted_tools]
+    S -->|否| U[构建下一轮 State → continue]
+    U --> C
+</div>
 
 <h3 id="_4">压缩前置处理</h3>
 <p>在每次 API 调用前，<code>queryLoop</code> 依次执行三层上下文管理：</p>
@@ -326,18 +327,18 @@
 <li><strong>Autocompact</strong>：当上下文窗口达到阈值时，使用 Haiku 模型生成摘要并替换历史（第 454–543 行）</li>
 </ol>
 <h3 id="_5">流式接收响应</h3>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/query.ts:659</span>
-<span class="k">for</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">message</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="nx">deps</span><span class="p">.</span><span class="nx">callModel</span><span class="p">({</span>
-<span class="w">  </span><span class="nx">messages</span><span class="o">:</span><span class="w"> </span><span class="kt">prependUserContext</span><span class="p">(</span><span class="nx">messagesForQuery</span><span class="p">,</span><span class="w"> </span><span class="nx">userContext</span><span class="p">),</span>
-<span class="w">  </span><span class="nx">systemPrompt</span><span class="o">:</span><span class="w"> </span><span class="kt">fullSystemPrompt</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">thinkingConfig</span><span class="o">:</span><span class="w"> </span><span class="kt">toolUseContext.options.thinkingConfig</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">tools</span><span class="o">:</span><span class="w"> </span><span class="kt">toolUseContext.options.tools</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">signal</span><span class="o">:</span><span class="w"> </span><span class="kt">toolUseContext.abortController.signal</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">options</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">model</span><span class="o">:</span><span class="w"> </span><span class="kt">currentModel</span><span class="p">,</span><span class="w"> </span><span class="nx">fallbackModel</span><span class="p">,</span><span class="w"> </span><span class="nx">querySource</span><span class="p">,</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">},</span>
-<span class="p">}))</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="c1">// 处理每条流式消息</span>
-<span class="p">}</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// src/query.ts:659
+for await (const message of deps.callModel({
+  messages: prependUserContext(messagesForQuery, userContext),
+  systemPrompt: fullSystemPrompt,
+  thinkingConfig: toolUseContext.options.thinkingConfig,
+  tools: toolUseContext.options.tools,
+  signal: toolUseContext.abortController.signal,
+  options: { model: currentModel, fallbackModel, querySource, ... },
+})) {
+  // 处理每条流式消息
+}
+</code></pre>
 
 <p><code>deps.callModel</code> 是一个可注入的依赖（方便测试），在生产环境中指向实际的 Anthropic API 调用。流式响应中，每个 <code>assistant</code> 类型的消息都会被检查是否包含 <code>tool_use</code> 块，若有则设置 <code>needsFollowUp = true</code>。</p>
 <h3 id="streamingtoolexecutor">StreamingToolExecutor 并行工具执行</h3>
@@ -349,14 +350,14 @@
 若当前未设置 <code>maxOutputTokensOverride</code>，且 feature flag <code>tengu_otk_slot_v1</code> 开启，则将上限提升至 <code>ESCALATED_MAX_TOKENS</code>（64k），重试同一请求。</p>
 <p><strong>第二级：多轮续写</strong>（第 1223–1252 行）
 若提升上限后仍截断，或 flag 未开启，则注入一条隐藏的用户消息：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1">// src/query.ts:1224</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">recoveryMessage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">createUserMessage</span><span class="p">({</span>
-<span class="w">  </span><span class="nx">content</span><span class="o">:</span>
-<span class="w">    </span><span class="sb">`Output token limit hit. Resume directly — no apology, no recap of what you were doing. `</span><span class="w"> </span><span class="o">+</span>
-<span class="w">    </span><span class="sb">`Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.`</span><span class="p">,</span>
-<span class="w">  </span><span class="nx">isMeta</span><span class="o">:</span><span class="w"> </span><span class="kt">true</span><span class="p">,</span>
-<span class="p">})</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-typescript">// src/query.ts:1224
+const recoveryMessage = createUserMessage({
+  content:
+    `Output token limit hit. Resume directly — no apology, no recap of what you were doing. ` +
+    `Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.`,
+  isMeta: true,
+})
+</code></pre>
 
 <p>这条消息对用户不可见（<code>isMeta: true</code>），最多重试 <code>MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3</code> 次（第 164 行）。</p>
 <hr />
@@ -372,55 +373,56 @@
 <hr />
 <h2 id="48">4.8 完整交互时序图</h2>
 <p>下图展示了从用户输入到最终结果的完整调用链：</p>
-<div class="codehilite"><pre><span></span><code><span class="n">sequenceDiagram</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">User</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="err">用户</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">QE</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">QueryEngine</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">SP</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">fetchSystemPromptParts</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">PUI</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">processUserInput</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">Q</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">query</span><span class="p">()</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">QL</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">queryLoop</span><span class="p">()</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">API</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Anthropic</span><span class="w"> </span><span class="n">API</span>
-<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">Tools</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="err">工具执行器</span>
+<div class="mermaid">
+sequenceDiagram
+    participant User as 用户
+    participant QE as QueryEngine
+    participant SP as fetchSystemPromptParts
+    participant PUI as processUserInput
+    participant Q as query()
+    participant QL as queryLoop()
+    participant API as Anthropic API
+    participant Tools as 工具执行器
 
-<span class="w">    </span><span class="n">User</span><span class="o">-&gt;&gt;</span><span class="n">QE</span><span class="p">:</span><span class="w"> </span><span class="n">submitMessage</span><span class="p">(</span><span class="s2">&quot;帮我写一个排序算法&quot;</span><span class="p">)</span>
-<span class="w">    </span><span class="n">QE</span><span class="o">-&gt;&gt;</span><span class="n">SP</span><span class="p">:</span><span class="w"> </span><span class="err">获取系统提示、</span><span class="n">userContext</span><span class="err">、</span><span class="n">systemContext</span>
-<span class="w">    </span><span class="n">SP</span><span class="o">--&gt;&gt;</span><span class="n">QE</span><span class="p">:</span><span class="w"> </span><span class="n">defaultSystemPrompt</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">userContext</span>
-<span class="w">    </span><span class="n">QE</span><span class="o">-&gt;&gt;</span><span class="n">QE</span><span class="p">:</span><span class="w"> </span><span class="err">加载</span><span class="w"> </span><span class="n">skills</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">plugins</span><span class="err">（并行）</span>
-<span class="w">    </span><span class="n">QE</span><span class="o">--&gt;&gt;</span><span class="n">User</span><span class="p">:</span><span class="w"> </span><span class="nb">yield</span><span class="w"> </span><span class="n">buildSystemInitMessage</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>
+    User->>QE: submitMessage("帮我写一个排序算法")
+    QE->>SP: 获取系统提示、userContext、systemContext
+    SP-->>QE: defaultSystemPrompt + userContext
+    QE->>QE: 加载 skills + plugins（并行）
+    QE-->>User: yield buildSystemInitMessage(...)
 
-<span class="w">    </span><span class="n">QE</span><span class="o">-&gt;&gt;</span><span class="n">PUI</span><span class="p">:</span><span class="w"> </span><span class="n">processUserInput</span><span class="p">(</span><span class="n">prompt</span><span class="p">,</span><span class="w"> </span><span class="n">context</span><span class="p">)</span>
-<span class="w">    </span><span class="n">PUI</span><span class="o">--&gt;&gt;</span><span class="n">QE</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">messages</span><span class="p">,</span><span class="w"> </span><span class="n">shouldQuery</span><span class="o">=</span><span class="bp">true</span><span class="p">,</span><span class="w"> </span><span class="n">model</span><span class="w"> </span><span class="p">}</span>
-<span class="w">    </span><span class="n">QE</span><span class="o">-&gt;&gt;</span><span class="n">QE</span><span class="p">:</span><span class="w"> </span><span class="n">mutableMessages</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="o">...</span><span class="n">newMessages</span><span class="p">)</span>
-<span class="w">    </span><span class="n">QE</span><span class="o">-&gt;&gt;</span><span class="n">QE</span><span class="p">:</span><span class="w"> </span><span class="n">recordTranscript</span><span class="p">(</span><span class="n">messages</span><span class="p">)</span>
+    QE->>PUI: processUserInput(prompt, context)
+    PUI-->>QE: { messages, shouldQuery=true, model }
+    QE->>QE: mutableMessages.push(...newMessages)
+    QE->>QE: recordTranscript(messages)
 
-<span class="w">    </span><span class="n">QE</span><span class="o">-&gt;&gt;</span><span class="n">Q</span><span class="p">:</span><span class="w"> </span><span class="n">query</span><span class="p">({</span><span class="w"> </span><span class="n">messages</span><span class="p">,</span><span class="w"> </span><span class="n">systemPrompt</span><span class="p">,</span><span class="w"> </span><span class="o">...</span><span class="w"> </span><span class="p">})</span>
-<span class="w">    </span><span class="n">Q</span><span class="o">-&gt;&gt;</span><span class="n">QL</span><span class="p">:</span><span class="w"> </span><span class="n">queryLoop</span><span class="p">(</span><span class="n">params</span><span class="p">,</span><span class="w"> </span><span class="n">consumedCommandUuids</span><span class="p">)</span>
+    QE->>Q: query({ messages, systemPrompt, ... })
+    Q->>QL: queryLoop(params, consumedCommandUuids)
 
-<span class="w">    </span><span class="n">loop</span><span class="w"> </span><span class="err">每次</span><span class="w"> </span><span class="n">API</span><span class="w"> </span><span class="err">调用</span>
-<span class="w">        </span><span class="n">QL</span><span class="o">-&gt;&gt;</span><span class="n">QL</span><span class="p">:</span><span class="w"> </span><span class="err">应用</span><span class="w"> </span><span class="n">snip</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">microcompact</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">autocompact</span>
-<span class="w">        </span><span class="n">QL</span><span class="o">-&gt;&gt;</span><span class="n">QL</span><span class="p">:</span><span class="w"> </span><span class="err">检查</span><span class="w"> </span><span class="n">token</span><span class="w"> </span><span class="err">阻塞限制</span>
-<span class="w">        </span><span class="n">QL</span><span class="o">-&gt;&gt;</span><span class="n">API</span><span class="p">:</span><span class="w"> </span><span class="n">callModel</span><span class="p">(</span><span class="n">messages</span><span class="p">,</span><span class="w"> </span><span class="n">systemPrompt</span><span class="p">,</span><span class="w"> </span><span class="n">tools</span><span class="p">,</span><span class="w"> </span><span class="o">...</span><span class="p">)</span>
-<span class="w">        </span><span class="n">API</span><span class="o">--&gt;&gt;</span><span class="n">QL</span><span class="p">:</span><span class="w"> </span><span class="n">stream</span><span class="p">:</span><span class="w"> </span><span class="n">AssistantMessage</span><span class="err">（含文本块）</span>
-<span class="w">        </span><span class="n">QL</span><span class="o">--&gt;&gt;</span><span class="n">User</span><span class="p">:</span><span class="w"> </span><span class="nb">yield</span><span class="w"> </span><span class="n">AssistantMessage</span>
+    loop 每次 API 调用
+        QL->>QL: 应用 snip / microcompact / autocompact
+        QL->>QL: 检查 token 阻塞限制
+        QL->>API: callModel(messages, systemPrompt, tools, ...)
+        API-->>QL: stream: AssistantMessage（含文本块）
+        QL-->>User: yield AssistantMessage
 
-<span class="w">        </span><span class="n">alt</span><span class="w"> </span><span class="err">包含</span><span class="w"> </span><span class="n">tool_use</span><span class="w"> </span><span class="err">块</span>
-<span class="w">            </span><span class="n">API</span><span class="o">--&gt;&gt;</span><span class="n">QL</span><span class="p">:</span><span class="w"> </span><span class="n">stream</span><span class="p">:</span><span class="w"> </span><span class="n">AssistantMessage</span><span class="err">（含</span><span class="w"> </span><span class="n">tool_use</span><span class="err">）</span>
-<span class="w">            </span><span class="n">QL</span><span class="o">--&gt;&gt;</span><span class="n">User</span><span class="p">:</span><span class="w"> </span><span class="nb">yield</span><span class="w"> </span><span class="n">AssistantMessage</span>
-<span class="w">            </span><span class="n">QL</span><span class="o">-&gt;&gt;</span><span class="n">Tools</span><span class="p">:</span><span class="w"> </span><span class="n">runTools</span><span class="p">(</span><span class="n">toolUseBlocks</span><span class="p">,</span><span class="w"> </span><span class="n">canUseTool</span><span class="p">)</span>
-<span class="w">            </span><span class="n">Note</span><span class="w"> </span><span class="n">over</span><span class="w"> </span><span class="n">Tools</span><span class="p">:</span><span class="w"> </span><span class="err">权限检查</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">执行</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">收集结果</span>
-<span class="w">            </span><span class="n">Tools</span><span class="o">--&gt;&gt;</span><span class="n">QL</span><span class="p">:</span><span class="w"> </span><span class="n">toolResults</span><span class="w"> </span><span class="p">(</span><span class="n">UserMessage</span><span class="p">)</span>
-<span class="w">            </span><span class="n">QL</span><span class="o">--&gt;&gt;</span><span class="n">User</span><span class="p">:</span><span class="w"> </span><span class="nb">yield</span><span class="w"> </span><span class="n">toolResult</span><span class="w"> </span><span class="n">messages</span>
-<span class="w">            </span><span class="n">QL</span><span class="o">-&gt;&gt;</span><span class="n">QL</span><span class="p">:</span><span class="w"> </span><span class="n">state</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">messages</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="o">...</span><span class="p">,</span><span class="w"> </span><span class="n">toolResults</span><span class="p">],</span><span class="w"> </span><span class="o">...</span><span class="w"> </span><span class="p">}</span>
-<span class="w">            </span><span class="n">Note</span><span class="w"> </span><span class="n">over</span><span class="w"> </span><span class="n">QL</span><span class="p">:</span><span class="w"> </span><span class="k">continue</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">下一次循环</span>
-<span class="w">        </span><span class="k">else</span><span class="w"> </span><span class="err">无工具调用</span>
-<span class="w">            </span><span class="n">QL</span><span class="o">-&gt;&gt;</span><span class="n">QL</span><span class="p">:</span><span class="w"> </span><span class="err">执行</span><span class="w"> </span><span class="n">stopHooks</span><span class="w"> </span><span class="err">检查</span>
-<span class="w">            </span><span class="n">QL</span><span class="o">--&gt;&gt;</span><span class="n">Q</span><span class="p">:</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">reason</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;completed&#39;</span><span class="w"> </span><span class="p">}</span>
-<span class="w">        </span><span class="n">end</span>
-<span class="w">    </span><span class="n">end</span>
+        alt 包含 tool_use 块
+            API-->>QL: stream: AssistantMessage（含 tool_use）
+            QL-->>User: yield AssistantMessage
+            QL->>Tools: runTools(toolUseBlocks, canUseTool)
+            Note over Tools: 权限检查 → 执行 → 收集结果
+            Tools-->>QL: toolResults (UserMessage)
+            QL-->>User: yield toolResult messages
+            QL->>QL: state = { messages: [..., toolResults], ... }
+            Note over QL: continue → 下一次循环
+        else 无工具调用
+            QL->>QL: 执行 stopHooks 检查
+            QL-->>Q: return { reason: 'completed' }
+        end
+    end
 
-<span class="w">    </span><span class="n">Q</span><span class="o">--&gt;&gt;</span><span class="n">QE</span><span class="p">:</span><span class="w"> </span><span class="n">Terminal</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">reason</span><span class="p">:</span><span class="w"> </span><span class="s1">&#39;completed&#39;</span><span class="w"> </span><span class="p">}</span>
-<span class="w">    </span><span class="n">QE</span><span class="o">--&gt;&gt;</span><span class="n">User</span><span class="p">:</span><span class="w"> </span><span class="nb">yield</span><span class="w"> </span><span class="n">SDKResultMessage</span>
-</code></pre></div>
+    Q-->>QE: Terminal { reason: 'completed' }
+    QE-->>User: yield SDKResultMessage
+</div>
 
 <hr />
 <h2 id="49-streamevent">4.9 StreamEvent 类型体系</h2>
